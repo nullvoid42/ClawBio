@@ -1,10 +1,18 @@
-# ClawBio
-
 <p align="center">
-  <img src="img/clawbio-logo.jpeg" alt="ClawBio Logo" width="300">
+  <img src="img/clawbio-social-preview.png" alt="ClawBio" width="600">
 </p>
 
-**The first bioinformatics-native AI agent skill library.** Built on [OpenClaw](https://github.com/openclaw/openclaw) (180k+ GitHub stars), ClawBio gives AI agents domain-specific skills for genomics and computational biology — all running locally on your machine.
+<p align="center">
+  <strong>The first bioinformatics-native AI agent skill library.</strong><br>
+  Built on <a href="https://github.com/openclaw/openclaw">OpenClaw</a> (180k+ GitHub stars). Local-first. Privacy-focused. Reproducible.
+</p>
+
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.9+-blue?logo=python&logoColor=white" alt="Python 3.9+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
+  <a href="https://clawhub.ai"><img src="https://img.shields.io/badge/ClawHub-3_skills-orange" alt="ClawHub Skills"></a>
+  <a href="https://manuelcorpas.github.io/ClawBio/slides/"><img src="https://img.shields.io/badge/slides-live_demo-purple" alt="Slides"></a>
+</p>
 
 ## Core Principles
 
