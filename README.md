@@ -16,7 +16,7 @@
 
 ## Core Principles
 
-- **Local-first**: No genomic data leaves your laptop. No cloud uploads, no data exfiltration.
+- **Local-first**: No bioinformatic data leaves your laptop. No cloud uploads, no data exfiltration.
 - **Reproducible**: Every analysis exports `commands.sh`, `environment.yml`, and SHA-256 checksums — anyone can reproduce it without the agent.
 - **Modular**: Each skill is a self-contained directory (`SKILL.md` + Python scripts) that plugs into the orchestrator.
 
