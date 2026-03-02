@@ -13,7 +13,7 @@
   <a href="https://github.com/ClawBio/ClawBio/actions/workflows/ci.yml"><img src="https://github.com/ClawBio/ClawBio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.10+-blue?logo=python&logoColor=white" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
-  <a href="https://clawhub.ai"><img src="https://img.shields.io/badge/ClawHub-3_skills-orange" alt="ClawHub Skills"></a>
+  <a href="https://clawhub.ai"><img src="https://img.shields.io/badge/ClawHub-7_skills-orange" alt="ClawHub Skills"></a>
   <a href="https://github.com/ClawBio/ClawBio/issues"><img src="https://img.shields.io/github/issues/ClawBio/ClawBio" alt="Open Issues"></a>
   <a href="https://clawbio.github.io/ClawBio/slides/"><img src="https://img.shields.io/badge/slides-London_Bioinformatics_Meetup-purple" alt="Slides"></a>
 </p>
@@ -128,11 +128,13 @@ report/
 
 | Skill | Status | Description |
 |-------|--------|-------------|
-| [Bio Orchestrator](skills/bio-orchestrator/) | **MVP** | Routes bioinformatics requests to the right specialist skill |
-| [PharmGx Reporter](skills/pharmgx-reporter/) | **MVP** | Pharmacogenomic report: 12 genes, 51 drugs, CPIC guidelines |
-| [Ancestry PCA](skills/ancestry-pca/) | **MVP** | PCA decomposition vs SGDP (345 samples, 164 global populations) |
-| [Semantic Similarity](skills/semantic-sim/) | **MVP** | Semantic Isolation Index for 175 GBD diseases from 13.1M PubMed abstracts |
-| [Equity Scorer](skills/equity-scorer/) | Planned | HEIM diversity metrics from VCF/ancestry data |
+| [Bio Orchestrator](skills/bio-orchestrator/) | **MVP** | Routes requests to the right skill |
+| [PharmGx Reporter](skills/pharmgx-reporter/) | **MVP** | 12 genes, 51 drugs, CPIC guidelines |
+| [Equity Scorer](skills/equity-scorer/) | **MVP** | HEIM diversity metrics from VCF/ancestry |
+| [NutriGx Advisor](skills/nutrigx_advisor/) | **MVP** | Personalised nutrigenomics (40 SNPs, 13 domains) |
+| [Metagenomics Profiler](skills/claw-metagenomics/) | **MVP** | Kraken2/RGI/HUMAnN3 taxonomy + resistome |
+| [Ancestry PCA](skills/ancestry-pca/) | **MVP** | PCA vs SGDP (345 samples, 164 populations) |
+| [Semantic Similarity](skills/semantic-sim/) | **MVP** | Isolation Index from 13.1M PubMed abstracts |
 | [VCF Annotator](skills/vcf-annotator/) | Planned | Variant annotation with VEP, ClinVar, gnomAD + ancestry context |
 | [Lit Synthesizer](skills/lit-synthesizer/) | Planned | PubMed/bioRxiv search with LLM summarisation and citation graphs |
 | [scRNA Orchestrator](skills/scrna-orchestrator/) | Planned | Scanpy automation: QC, clustering, DE analysis, visualisation |
@@ -199,26 +201,36 @@ python semantic_sim.py --demo --output sem_report
 
 ## Quick Start
 
-### Prerequisites
-
-- [OpenClaw](https://github.com/openclaw/openclaw) installed and configured
-- Python 3.9+
-- Bioinformatics tools for your skill of choice (see individual SKILL.md files)
-
-### Install and run
-
 ```bash
-# Install a skill
-openclaw install skills/pharmgx-reporter
-
-# Run with natural language
-openclaw "Profile the pharmacogenes in my 23andMe file at data/raw_genotype.txt"
-
-# Or run directly
-python skills/pharmgx-reporter/pharmgx_reporter.py --input data/raw_genotype.txt --output report
+git clone https://github.com/ClawBio/ClawBio.git && cd ClawBio
+pip install -r requirements.txt
+python clawbio.py run pharmgx --demo
 ```
 
-Every skill includes **demo data** so you can try it immediately without your own files.
+PharmGx demo runs in <2 seconds. Only needs Python 3.10+.
+
+### Try all skills
+
+```bash
+python clawbio.py list                          # See available skills
+python clawbio.py run pharmgx --demo            # Pharmacogenomics (1s)
+python clawbio.py run equity --demo             # Equity scoring (55s)
+python clawbio.py run nutrigx --demo            # Nutrigenomics (60s)
+python clawbio.py run metagenomics --demo       # Metagenomics (3s)
+```
+
+### Run with your own data
+
+```bash
+python clawbio.py run pharmgx --input my_23andme.txt --output results/
+```
+
+### Run tests
+
+```bash
+pip install pytest
+python -m pytest
+```
 
 ---
 

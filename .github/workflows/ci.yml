@@ -26,6 +26,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest numpy pandas scikit-learn matplotlib
 
+      - name: Test ClawBio CLI
+        run: python clawbio.py list
+
       - name: Run PharmGx Reporter tests
         run: python -m pytest skills/pharmgx-reporter/tests/test_pharmgx.py -v
 
