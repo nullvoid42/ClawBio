@@ -238,10 +238,10 @@ python -m pytest
 
 <p align="center">
   <img src="img/terri_attwood_avatar_top_left.png" alt="RoboTerri" width="120">
-  <br><em>RoboTerri — ClawBio's Telegram agent</em>
+  <br><em>RoboTerri — ClawBio's Telegram agent, inspired by <a href="https://en.wikipedia.org/wiki/Teresa_Attwood">Prof. Teresa K. Attwood</a></em>
 </p>
 
-ClawBio skills are also available through **RoboTerri**, our Telegram AI agent. Send a genetic data file or ask for a demo — get back a summary, full report, and figures directly in Telegram.
+ClawBio skills are also available through **RoboTerri**, our Telegram AI agent — named after [Prof. Teresa K. Attwood](https://en.wikipedia.org/wiki/Teresa_Attwood), a pioneer of bioinformatics education and computational biology in the UK. Send a genetic data file or ask for a demo — get back a summary, full report, and figures directly in Telegram.
 
 ```
 You:        [send 23andMe file]
