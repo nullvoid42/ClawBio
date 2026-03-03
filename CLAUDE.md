@@ -22,10 +22,11 @@ When the user asks a question, match it to a skill and act:
 | Reproducibility, Nextflow, Singularity, Conda export | `skills/repro-enforcer/` | Read SKILL.md, apply methodology |
 | Sequence QC, FASTQ, alignment, BAM, trimming | `skills/seq-wrangler/` | Read SKILL.md, apply methodology |
 | Lab notebook, experiments, protocols, inventory, Labstep | `skills/labstep/` | Read SKILL.md, apply methodology |
+| ClinPGx database, gene-drug lookup, PharmGKB query, CPIC guideline database, FDA drug label PGx, "look up gene on ClinPGx" | `skills/clinpgx/` | Run `clinpgx.py` |
 
 ## How to Use a Skill
 
-### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, bio-orchestrator)
+### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, bio-orchestrator, clinpgx)
 1. Read the skill's `SKILL.md` for domain context
 2. Run the Python script with correct CLI arguments (see below)
 3. Show the user the output — open any generated figures and explain results
@@ -57,6 +58,13 @@ python skills/genome-compare/genome_compare.py \
   --input <23andme_file> --output <report_dir>
 python skills/genome-compare/genome_compare.py --demo --output <report_dir>
 
+# ClinPGx API query — gene/drug pharmacogenomic data
+python skills/clinpgx/clinpgx.py \
+  --gene <symbol> --output <report_dir>
+python skills/clinpgx/clinpgx.py \
+  --genes "CYP2D6,CYP2C19" --drugs "warfarin" --output <report_dir>
+python skills/clinpgx/clinpgx.py --demo --output <report_dir>
+
 # Bio orchestrator — auto-routes to the right skill
 python skills/bio-orchestrator/orchestrator.py \
   --input <file_or_query> [--skill <name>] [--output <dir>] [--list-skills]
@@ -76,6 +84,7 @@ For instant demos when the user has no data:
 | Pre-built equity report | `examples/demo_report/` | Reference output |
 | Manuel Corpas 23andMe (gzipped) | `skills/genome-compare/data/manuel_corpas_23andme.txt.gz` | genome-compare |
 | George Church 23andMe (gzipped) | `skills/genome-compare/data/george_church_23andme.txt.gz` | genome-compare (reference) |
+| ClinPGx demo (CYP2D6, live API) | `--demo` flag | clinpgx |
 
 ### Demo Commands
 
@@ -95,6 +104,9 @@ python skills/equity-scorer/equity_scorer.py \
 # NutriGx demo
 python skills/nutrigx_advisor/nutrigx_advisor.py \
   --input skills/nutrigx_advisor/synthetic_patient.txt --output /tmp/nutrigx_demo
+
+# ClinPGx demo
+python skills/clinpgx/clinpgx.py --demo --output /tmp/clinpgx_demo
 
 # List all available skills
 python skills/bio-orchestrator/orchestrator.py --list-skills
