@@ -1,5 +1,7 @@
 # Tutorial: Run ClawBio Skills via a Telegram Bot
 
+> **Production bot available**: If you want the full-featured bot with Claude-powered reasoning, medication photo detection, and the RoboTerri persona, see [`bot/roboterri.py`](../bot/roboterri.py) and its [README](../bot/README.md). The tutorial below builds a simpler version from scratch for learning purposes.
+
 This tutorial walks you through building a Telegram bot that runs ClawBio skills. By the end, you'll be able to send a genetic data file to your bot and receive a pharmacogenomics report, equity score, or genome comparison — all running locally on your machine.
 
 **Time**: ~20 minutes | **Difficulty**: Intermediate | **Prerequisites**: Python 3.11+, a Telegram account
