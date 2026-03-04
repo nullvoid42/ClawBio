@@ -355,6 +355,19 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the submission process and [templates
 
 ---
 
+## In the Wild
+
+ClawBio is built on [OpenClaw](https://github.com/openclaw/openclaw). On 1 March 2026, at the UK AI Agent Hack at Imperial College London, Manuel Corpas introduced ClawBio to Peter Steinberger — the creator of OpenClaw itself. The conversation covered skills vs MCPs, privacy-first genomics, and whether bioinformatics pipelines can be made reproducible by default.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=eEEA71qSOmU">
+    <img src="img/clawbio-peter-steinberger-poster.jpg" alt="Manuel Corpas introduces ClawBio to Peter Steinberger at the UK AI Agent Hack" width="480">
+  </a>
+  <br><em>Manuel Corpas introduces ClawBio to Peter Steinberger · UK AI Agent Hack, Imperial College London · <a href="https://www.youtube.com/watch?v=eEEA71qSOmU">Watch on YouTube →</a></em>
+</p>
+
+---
+
 ## Presentation
 
 ClawBio was announced at the **London Bioinformatics Meetup** on 26 February 2026.
