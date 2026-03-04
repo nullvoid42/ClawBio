@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -47,8 +48,8 @@ from telegram.ext import (
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0"))
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+TELEGRAM_CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", os.environ.get("AUTHORISED_CHAT_ID", "0")))
+LLM_API_KEY = os.environ.get("LLM_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 CLAWBIO_MODEL = os.environ.get("CLAWBIO_MODEL", "gpt-4o")
 
@@ -66,6 +67,11 @@ CLAWBIO_DIR = Path(__file__).resolve().parent.parent
 CLAWBIO_PY = CLAWBIO_DIR / "clawbio.py"
 SOUL_MD = CLAWBIO_DIR / "SOUL.md"
 OUTPUT_DIR = CLAWBIO_DIR / "output"
+DATA_DIR = CLAWBIO_DIR / "data"
+
+# Security limits (TG-004)
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB (Telegram document limit)
+MAX_PHOTO_BYTES = 20 * 1024 * 1024   # 20 MB (Telegram photo limit)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -222,6 +228,108 @@ TOOLS = [
                     },
                 },
                 "required": ["skill", "mode"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_file",
+            "description": (
+                "Save a file that was sent via Telegram to a specific folder. "
+                "The file is temporarily stored after download; use this tool to "
+                "move it to the requested destination. Only works for the most "
+                "recently received file. Default: saves to ClawBio data/ directory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "destination_folder": {
+                        "type": "string",
+                        "description": (
+                            "The folder path to save the file in (absolute path). "
+                            "Default: ClawBio data/ directory."
+                        ),
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": (
+                            "Optional filename to save as. If not provided, uses "
+                            "the original filename from Telegram."
+                        ),
+                    },
+                },
+                "required": ["destination_folder"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": (
+                "Create or overwrite a file on the filesystem with the given content. "
+                "Use this to write reports, markdown documents, text files, etc. "
+                "Default destination: ClawBio data/ directory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full text content to write to the file.",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename including extension (e.g. 'report.md', 'notes.txt').",
+                    },
+                    "destination_folder": {
+                        "type": "string",
+                        "description": (
+                            "Folder path (absolute). Default: ClawBio data/ directory."
+                        ),
+                    },
+                },
+                "required": ["content", "filename"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_audio",
+            "description": (
+                "Generate an MP3 audio file from text using edge-tts (Microsoft Edge "
+                "text-to-speech). Good for converting reports into accessible audio. "
+                "Available voices: en-GB-RyanNeural (British male, default), "
+                "en-GB-SoniaNeural (British female), en-US-GuyNeural (American male). "
+                "Typical speed: ~150 words/minute."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The text to convert to speech.",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Output MP3 filename (e.g. 'report-audio.mp3').",
+                    },
+                    "voice": {
+                        "type": "string",
+                        "description": "TTS voice. Default: 'en-GB-RyanNeural'.",
+                    },
+                    "rate": {
+                        "type": "string",
+                        "description": "Speech rate adjustment (e.g. '-5%', '+10%'). Default: '-5%'.",
+                    },
+                    "destination_folder": {
+                        "type": "string",
+                        "description": "Folder to save the MP3 (absolute path). Default: ClawBio data/.",
+                    },
+                },
+                "required": ["text", "filename"],
             },
         },
     },
@@ -447,6 +555,183 @@ async def execute_clawbio(args: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Security helpers (TG-002)
+# --------------------------------------------------------------------------- #
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Strip path traversal components and dangerous characters from a filename."""
+    # Take only the basename (no directory components)
+    filename = Path(filename).name
+    # Remove null bytes and control characters
+    filename = re.sub(r"[\x00-\x1f]", "", filename)
+    # Collapse path traversal attempts
+    filename = filename.replace("..", "").replace("/", "").replace("\\", "")
+    if not filename:
+        filename = "unnamed_file"
+    return filename
+
+
+def _resolve_dest(folder: str | None) -> Path:
+    """Resolve a destination folder, defaulting to ClawBio data/."""
+    dest = Path(folder) if folder else DATA_DIR
+    if not dest.is_absolute():
+        dest = CLAWBIO_DIR / dest
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def _validate_path(filepath: Path, allowed_root: Path) -> bool:
+    """Ensure filepath is under allowed_root (path traversal defense)."""
+    try:
+        filepath.resolve().relative_to(allowed_root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# execute_save_file
+# --------------------------------------------------------------------------- #
+
+
+async def execute_save_file(args: dict) -> str:
+    """Save the most recently received file to the requested destination."""
+    file_info = None
+    for _cid, info in _received_files.items():
+        file_info = info
+        break
+
+    if not file_info:
+        return "No recently received file to save. Send a file first."
+
+    src_path = Path(file_info["path"])
+    if not src_path.exists():
+        return "The temporary file has expired. Please send it again."
+
+    dest_path = _resolve_dest(args.get("destination_folder"))
+    filename = _sanitize_filename(args.get("filename") or file_info["filename"])
+    final_path = dest_path / filename
+
+    if not _validate_path(final_path, dest_path):
+        return f"Error: filename '{filename}' would escape the destination directory."
+
+    shutil.copy2(str(src_path), str(final_path))
+    logger.info(f"Saved file: {final_path}")
+
+    try:
+        src_path.unlink()
+    except OSError:
+        pass
+
+    return f"File saved to {final_path}"
+
+
+# --------------------------------------------------------------------------- #
+# execute_write_file
+# --------------------------------------------------------------------------- #
+
+
+async def execute_write_file(args: dict) -> str:
+    """Create or overwrite a file with the given content."""
+    content = args.get("content")
+    filename = args.get("filename")
+    if not content:
+        return "Error: 'content' is required. Provide the full text to write."
+    if not filename:
+        return "Error: 'filename' is required (e.g. 'report.md')."
+
+    dest = _resolve_dest(args.get("destination_folder"))
+    filename = _sanitize_filename(filename)
+    filepath = dest / filename
+
+    if not _validate_path(filepath, dest):
+        return f"Error: filename '{filename}' would escape the destination directory."
+
+    filepath.write_text(content, encoding="utf-8")
+    logger.info(f"Wrote file: {filepath} ({len(content)} chars)")
+    return f"File written to {filepath} ({len(content)} chars)"
+
+
+# --------------------------------------------------------------------------- #
+# execute_generate_audio
+# --------------------------------------------------------------------------- #
+
+
+async def execute_generate_audio(args: dict) -> str:
+    """Generate MP3 audio from text using edge-tts."""
+    text = args.get("text")
+    filename = args.get("filename")
+    if not text:
+        return "Error: 'text' is required. Provide the text to convert to speech."
+    if not filename:
+        return "Error: 'filename' is required (e.g. 'report.mp3')."
+    if not filename.endswith(".mp3"):
+        filename += ".mp3"
+
+    filename = _sanitize_filename(filename)
+    voice = args.get("voice", "en-GB-RyanNeural")
+    rate = args.get("rate", "-5%")
+    dest = _resolve_dest(args.get("destination_folder"))
+    filepath = dest / filename
+
+    if not _validate_path(filepath, dest):
+        return f"Error: filename '{filename}' would escape the destination directory."
+
+    # Write text to temp file for edge-tts
+    text_path = dest / f".tmp_{filename}.txt"
+    text_path.write_text(text, encoding="utf-8")
+
+    edge_tts_bin = Path.home() / "Library" / "Python" / "3.9" / "bin" / "edge-tts"
+    if not edge_tts_bin.exists():
+        edge_tts_bin = "edge-tts"
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(edge_tts_bin),
+            "--voice", voice,
+            f"--rate={rate}",
+            "--file", str(text_path),
+            "--write-media", str(filepath),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+
+        try:
+            text_path.unlink()
+        except OSError:
+            pass
+
+        if proc.returncode != 0:
+            err = stderr.decode()[-300:] if stderr else "unknown error"
+            return f"Audio generation failed (exit {proc.returncode}): {err}"
+
+        size_mb = filepath.stat().st_size / (1024 * 1024)
+        word_count = len(text.split())
+        est_minutes = word_count / 150
+
+        logger.info(f"Generated audio: {filepath} ({size_mb:.1f} MB, ~{est_minutes:.0f} min)")
+        return (
+            f"Audio saved to {filepath} ({size_mb:.1f} MB, "
+            f"~{word_count} words, ~{est_minutes:.0f} min estimated)"
+        )
+
+    except asyncio.TimeoutError:
+        try:
+            text_path.unlink()
+        except OSError:
+            pass
+        return "Audio generation timed out after 5 minutes."
+    except FileNotFoundError:
+        try:
+            text_path.unlink()
+        except OSError:
+            pass
+        return "edge-tts not found. Install with: pip3 install edge-tts"
+
+
+# --------------------------------------------------------------------------- #
 # Drain pending media
 # --------------------------------------------------------------------------- #
 
@@ -484,6 +769,9 @@ async def _drain_pending_media(update: Update, context) -> None:
 
 TOOL_EXECUTORS = {
     "clawbio": execute_clawbio,
+    "save_file": execute_save_file,
+    "write_file": execute_write_file,
+    "generate_audio": execute_generate_audio,
 }
 
 MAX_TOOL_ITERATIONS = 10
@@ -656,7 +944,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Hi there! RoboTerri here -- your ClawBio bioinformatics assistant ;-)\n\n"
         "Commands:\n"
         "  /skills  -- list available ClawBio skills\n"
-        "  /demo <skill>  -- run a demo (pharmgx, equity, nutrigx, compare, prs, profile)\n\n"
+        "  /demo <skill>  -- run a demo (pharmgx, equity, nutrigx, compare, prs, profile)\n"
+        "  /voice  -- toggle voice replies on/off\n"
+        "  /status  -- bot uptime and model info\n"
+        "  /health  -- system health check\n\n"
         "Or just chat -- I can answer bioinformatics questions.\n"
         "Send a genetic data file to get your pharmacogenomics report.\n"
         "Then ask: \"what diseases am I at risk for?\" or \"show my full profile\"\n"
@@ -706,6 +997,157 @@ async def cmd_demo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Demo failed: {e}")
 
 
+async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /voice command -- toggle voice replies on/off."""
+    if not is_authorised(update):
+        return
+    current = context.user_data.get("voice_replies", False)
+    context.user_data["voice_replies"] = not current
+    state = "ON" if not current else "OFF"
+    await update.message.reply_text(
+        f"Voice replies toggled {state}.\n"
+        f"{'I will now send voice memos alongside text replies.' if not current else 'Back to text-only replies.'}"
+    )
+
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /status command -- report uptime and model info."""
+    if not is_authorised(update):
+        return
+
+    uptime_secs = int(time.time() - BOT_START_TIME)
+    hours, remainder = divmod(uptime_secs, 3600)
+    minutes, secs = divmod(remainder, 60)
+    uptime_str = f"{hours}h {minutes}m {secs}s"
+
+    # Count available skills
+    skills_dir = CLAWBIO_DIR / "skills"
+    skill_count = sum(
+        1 for d in skills_dir.iterdir()
+        if d.is_dir() and (d / "SKILL.md").exists()
+    ) if skills_dir.exists() else 0
+
+    status_msg = (
+        f"RoboTerri ClawBio Status\n"
+        f"========================\n"
+        f"Bot uptime: {uptime_str}\n"
+        f"LLM model: {CLAWBIO_MODEL}\n"
+        f"Skills available: {skill_count}\n"
+        f"ClawBio dir: {CLAWBIO_DIR}\n"
+    )
+    if LLM_BASE_URL:
+        status_msg += f"LLM endpoint: {LLM_BASE_URL}\n"
+
+    await update.message.reply_text(status_msg)
+
+
+async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /health command -- system health check."""
+    if not is_authorised(update):
+        return
+
+    checks = []
+
+    # ClawBio CLI
+    if CLAWBIO_PY.exists():
+        checks.append("ClawBio CLI: OK")
+    else:
+        checks.append("ClawBio CLI: MISSING")
+
+    # SOUL.md
+    if SOUL_MD.exists():
+        checks.append(f"SOUL.md: OK ({len(_soul)} chars)")
+    else:
+        checks.append("SOUL.md: MISSING (using fallback)")
+
+    # Skills
+    skills_dir = CLAWBIO_DIR / "skills"
+    if skills_dir.exists():
+        implemented = []
+        stub_only = []
+        for d in sorted(skills_dir.iterdir()):
+            if not d.is_dir() or not (d / "SKILL.md").exists():
+                continue
+            has_py = any(d.glob("*.py"))
+            if has_py:
+                implemented.append(d.name)
+            else:
+                stub_only.append(d.name)
+        checks.append(f"Skills (implemented): {len(implemented)}")
+        checks.append(f"Skills (stub/planned): {len(stub_only)}")
+    else:
+        checks.append("Skills directory: MISSING")
+
+    # Output directory
+    if OUTPUT_DIR.exists():
+        output_count = sum(1 for _ in OUTPUT_DIR.iterdir()) if OUTPUT_DIR.exists() else 0
+        checks.append(f"Output runs: {output_count}")
+    else:
+        checks.append("Output directory: not yet created")
+
+    # edge-tts availability
+    edge_tts_bin = Path.home() / "Library" / "Python" / "3.9" / "bin" / "edge-tts"
+    if edge_tts_bin.exists():
+        checks.append("edge-tts: OK")
+    else:
+        checks.append("edge-tts: not found (audio generation unavailable)")
+
+    await update.message.reply_text(
+        "ClawBio Health Check\n"
+        "====================\n" + "\n".join(checks)
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Voice reply helper
+# --------------------------------------------------------------------------- #
+
+
+async def _send_voice_reply(bot, chat_id: int, text: str) -> bool:
+    """Convert text to OGG/Opus voice message and send via Telegram.
+
+    Uses macOS say (Daniel voice) -> ffmpeg -> OGG/Opus.
+    Returns True if voice was sent, False on failure.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        text_file = os.path.join(tmpdir, "reply.txt")
+        aiff_file = os.path.join(tmpdir, "reply.aiff")
+        ogg_file = os.path.join(tmpdir, "reply.ogg")
+
+        with open(text_file, "w", encoding="utf-8") as f:
+            f.write(text)
+
+        # Generate speech with macOS say (Daniel = British male)
+        proc = await asyncio.create_subprocess_exec(
+            "say", "-v", "Daniel", "-r", "170",
+            "-f", text_file, "-o", aiff_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        if proc.returncode != 0:
+            logger.warning("say command failed for voice reply")
+            return False
+
+        # Convert to OGG/Opus (Telegram voice format)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", aiff_file,
+            "-codec:a", "libopus", "-b:a", "48k",
+            ogg_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        if proc.returncode != 0:
+            logger.warning("ffmpeg OGG conversion failed for voice reply")
+            return False
+
+        with open(ogg_file, "rb") as audio:
+            await bot.send_voice(chat_id=chat_id, voice=audio)
+
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # Message handlers
 # --------------------------------------------------------------------------- #
@@ -731,6 +1173,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _pending_text.clear()
         await send_long_message(update, reply)
         await _drain_pending_media(update, context)
+
+        # Voice reply if toggled on
+        if context.user_data.get("voice_replies"):
+            try:
+                await _send_voice_reply(
+                    context.bot, update.effective_chat.id, reply
+                )
+            except Exception as ve:
+                logger.warning(f"Voice reply failed: {ve}")
     except Exception as e:
         logger.error(f"Error handling message: {e}", exc_info=True)
         await update.message.reply_text(
@@ -769,8 +1220,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = "photo.jpg"
 
         img_bytes = await file.download_as_bytearray()
+
+        # File size check (TG-004)
+        if len(img_bytes) > MAX_PHOTO_BYTES:
+            await update.message.reply_text(
+                f"Photo too large ({len(img_bytes) / (1024*1024):.1f} MB). "
+                f"Maximum: {MAX_PHOTO_BYTES / (1024*1024):.0f} MB."
+            )
+            return
+
         img_b64 = base64.standard_b64encode(bytes(img_bytes)).decode("ascii")
         logger.info(f"Photo received: {len(img_bytes)} bytes, type={media_type}")
+
+        # Sanitize filename (TG-002)
+        filename = _sanitize_filename(filename)
 
         # Store for potential file-based skill use
         tmp_path = Path(tempfile.gettempdir()) / f"roboterri_{filename}"
@@ -841,8 +1304,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         file = await doc.get_file()
-        filename = doc.file_name or "document"
+        filename = _sanitize_filename(doc.file_name or "document")
         file_size = doc.file_size or 0
+
+        # File size check (TG-004)
+        if file_size > MAX_UPLOAD_BYTES:
+            await update.message.reply_text(
+                f"File too large ({file_size / (1024*1024):.1f} MB). "
+                f"Maximum: {MAX_UPLOAD_BYTES / (1024*1024):.0f} MB."
+            )
+            return
 
         tmp_path = Path(tempfile.gettempdir()) / f"roboterri_{filename}"
         await file.download_to_drive(str(tmp_path))
@@ -936,6 +1407,9 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("skills", cmd_skills))
     app.add_handler(CommandHandler("demo", cmd_demo))
+    app.add_handler(CommandHandler("voice", cmd_voice))
+    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("health", cmd_health))
 
     # Message handlers
     app.add_handler(MessageHandler(
