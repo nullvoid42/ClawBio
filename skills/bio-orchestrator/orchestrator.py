@@ -78,6 +78,18 @@ KEYWORD_MAP: dict[str, str] = {
     "dna in common": "genome-compare",
     "george church": "genome-compare",
     "genome comparison": "genome-compare",
+    "prs": "gwas-prs",
+    "polygenic": "gwas-prs",
+    "risk score": "gwas-prs",
+    "polygenic risk": "gwas-prs",
+    "gwas lookup": "gwas-lookup",
+    "variant lookup": "gwas-lookup",
+    "rs lookup": "gwas-lookup",
+    "rsid": "gwas-lookup",
+    "look up rs": "gwas-lookup",
+    "lookup rs": "gwas-lookup",
+    "phewas": "gwas-lookup",
+    "gwas": "gwas-lookup",
 }
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent

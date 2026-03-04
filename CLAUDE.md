@@ -23,10 +23,12 @@ When the user asks a question, match it to a skill and act:
 | Sequence QC, FASTQ, alignment, BAM, trimming | `skills/seq-wrangler/` | Read SKILL.md, apply methodology |
 | Lab notebook, experiments, protocols, inventory, Labstep | `skills/labstep/` | Read SKILL.md, apply methodology |
 | ClinPGx database, gene-drug lookup, PharmGKB query, CPIC guideline database, FDA drug label PGx, "look up gene on ClinPGx" | `skills/clinpgx/` | Run `clinpgx.py` |
+| GWAS polygenic risk scores, PRS, "what's my risk for diabetes", PGS Catalog, polygenic | `skills/gwas-prs/` | Run `gwas_prs.py` |
+| GWAS variant lookup, rsID search, "look up rs3798220", variant associations, PheWAS, variant eQTL, federated variant query | `skills/gwas-lookup/` | Run `gwas_lookup.py` |
 
 ## How to Use a Skill
 
-### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, bio-orchestrator, clinpgx)
+### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, bio-orchestrator, clinpgx, gwas-prs, gwas-lookup)
 1. Read the skill's `SKILL.md` for domain context
 2. Run the Python script with correct CLI arguments (see below)
 3. Show the user the output — open any generated figures and explain results
@@ -65,6 +67,20 @@ python skills/clinpgx/clinpgx.py \
   --genes "CYP2D6,CYP2C19" --drugs "warfarin" --output <report_dir>
 python skills/clinpgx/clinpgx.py --demo --output <report_dir>
 
+# GWAS Polygenic Risk Score from 23andMe/AncestryDNA data
+python skills/gwas-prs/gwas_prs.py \
+  --input <23andme_file> --trait "type 2 diabetes" --output <report_dir>
+python skills/gwas-prs/gwas_prs.py \
+  --input <23andme_file> --pgs-id PGS000013 --output <report_dir>
+python skills/gwas-prs/gwas_prs.py --demo --output /tmp/prs_demo
+
+# GWAS Lookup — federated variant query across 9 genomic databases
+python skills/gwas-lookup/gwas_lookup.py \
+  --rsid <rsid> --output <report_dir>
+python skills/gwas-lookup/gwas_lookup.py \
+  --rsid <rsid> --skip gtex,bbj --output <report_dir>
+python skills/gwas-lookup/gwas_lookup.py --demo --output /tmp/gwas_lookup_demo
+
 # Bio orchestrator — auto-routes to the right skill
 python skills/bio-orchestrator/orchestrator.py \
   --input <file_or_query> [--skill <name>] [--output <dir>] [--list-skills]
@@ -85,6 +101,9 @@ For instant demos when the user has no data:
 | Manuel Corpas 23andMe (gzipped) | `skills/genome-compare/data/manuel_corpas_23andme.txt.gz` | genome-compare |
 | George Church 23andMe (gzipped) | `skills/genome-compare/data/george_church_23andme.txt.gz` | genome-compare (reference) |
 | ClinPGx demo (CYP2D6, live API) | `--demo` flag | clinpgx |
+| Synthetic patient (PRS, ~300 SNPs) | `skills/gwas-prs/demo_patient_prs.txt` | gwas-prs |
+| Curated PGS scores (6 traits) | `skills/gwas-prs/curated_scores.json` | gwas-prs |
+| GWAS Lookup demo (rs3798220, pre-fetched) | `--demo` flag | gwas-lookup |
 
 ### Demo Commands
 
@@ -107,6 +126,12 @@ python skills/nutrigx_advisor/nutrigx_advisor.py \
 
 # ClinPGx demo
 python skills/clinpgx/clinpgx.py --demo --output /tmp/clinpgx_demo
+
+# GWAS PRS demo
+python skills/gwas-prs/gwas_prs.py --demo --output /tmp/prs_demo
+
+# GWAS Lookup demo
+python skills/gwas-lookup/gwas_lookup.py --demo --output /tmp/gwas_lookup_demo
 
 # List all available skills
 python skills/bio-orchestrator/orchestrator.py --list-skills

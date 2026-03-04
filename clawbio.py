@@ -91,6 +91,18 @@ SKILLS = {
         "allowed_extra_flags": {"--drug", "--dose"},
         "summary_default": True,  # stdout card, no file output
     },
+    "prs": {
+        "script": SKILLS_DIR / "gwas-prs" / "gwas_prs.py",
+        "demo_args": ["--demo"],
+        "description": "GWAS Polygenic Risk Score calculator (PGS Catalog, 3000+ scores)",
+        "allowed_extra_flags": {"--trait", "--pgs-id", "--min-overlap", "--max-variants", "--build"},
+    },
+    "gwas": {
+        "script": SKILLS_DIR / "gwas-lookup" / "gwas_lookup.py",
+        "demo_args": ["--demo"],
+        "description": "GWAS Lookup — federated variant query across 9 genomic databases",
+        "allowed_extra_flags": {"--rsid", "--skip", "--no-figures", "--no-cache", "--max-hits"},
+    },
 }
 
 # --------------------------------------------------------------------------- #
@@ -296,6 +308,10 @@ def main():
     )
     run_parser.add_argument("--drug", default=None, help="Drug name for single-drug lookup (drugphoto skill)")
     run_parser.add_argument("--dose", default=None, help="Visible dose from packaging (e.g. '50mg')")
+    run_parser.add_argument("--trait", default=None, help="Trait search term for PRS skill")
+    run_parser.add_argument("--pgs-id", default=None, help="PGS Catalog score ID for PRS skill")
+    run_parser.add_argument("--rsid", default=None, help="rsID for GWAS lookup skill (e.g. rs3798220)")
+    run_parser.add_argument("--skip", default=None, help="Comma-separated API names to skip (gwas-lookup skill)")
 
     args = parser.parse_args()
 
@@ -308,6 +324,14 @@ def main():
             extra.extend(["--drug", args.drug])
         if getattr(args, "dose", None):
             extra.extend(["--dose", args.dose])
+        if getattr(args, "trait", None):
+            extra.extend(["--trait", args.trait])
+        if getattr(args, "pgs_id", None):
+            extra.extend(["--pgs-id", args.pgs_id])
+        if getattr(args, "rsid", None):
+            extra.extend(["--rsid", args.rsid])
+        if getattr(args, "skip", None):
+            extra.extend(["--skip", args.skip])
         result = run_skill(
             skill_name=args.skill,
             input_path=args.input_path,
