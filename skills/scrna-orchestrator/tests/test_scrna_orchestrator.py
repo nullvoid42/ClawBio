@@ -141,8 +141,10 @@ def test_tiny_dataset_no_pca_crash(tmp_path: Path):
         ],
         dtype=np.int32,
     )
-    obs = pd.DataFrame(index=[f"cell_{i}" for i in range(4)])
-    var = pd.DataFrame(index=["GeneA", "GeneB"])
+    obs = pd.DataFrame(
+        index=pd.Index([f"cell_{i}" for i in range(4)], dtype="object")
+    )
+    var = pd.DataFrame(index=pd.Index(["GeneA", "GeneB"], dtype="object"))
     AnnData(X=x, obs=obs, var=var).write_h5ad(input_path)
 
     result = _run_cmd(
