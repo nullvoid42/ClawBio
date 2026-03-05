@@ -78,7 +78,7 @@ ChatGPT / Claude  = a smart generalist who guesses at bioinformatics
 
 ## Why Not Just Use ChatGPT?
 
-Ask Claude to "profile my pharmacogenes from this 23andMe file." It'll write plausible Python. But:
+Ask Claude to "profile my pharmacogenes from this [23andMe file](https://github.com/ClawBio/ClawBio/blob/main/docs/demo-genome.md)." It'll write plausible Python. But:
 
 - It **hallucinates** star allele calls and uses outdated CPIC guidelines
 - It **forgets** CYP2D6 \*4 is no-function (not reduced)
