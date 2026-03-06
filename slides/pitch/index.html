@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="ClawBio — DoraHacks Pitch 2026">
-<meta name="twitter:description" content="Biology should ship as executable skills, not PDFs. 154 stars · 21 skills · 1 week old.">
+<meta name="twitter:description" content="AI agents can do almost anything. They cannot do biology. Until now. 156 stars · 21 skills · 8 days.">
 <meta name="twitter:image" content="https://clawbio.ai/img/pitch-og.png?v=2">
 <link rel="icon" type="image/x-icon" href="../../img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="../../img/favicon-32.png">
@@ -98,25 +98,23 @@ html, body {
   line-height: 1.15; letter-spacing: -0.02em; text-align: center;
   margin-bottom: 1rem;
 }
-.subtitle {
-  font-size: clamp(1rem, 1.8vw, 1.3rem); color: var(--muted);
-  text-align: center; max-width: 680px; line-height: 1.6;
-  margin-bottom: 2.5rem;
-}
 .em { color: var(--green); }
 
 /* ── SLIDE 0 — TITLE ── */
-.title-logo { font-size: 4rem; margin-bottom: 0.4rem; }
 .title-brand {
   font-size: clamp(3rem, 6vw, 5rem); font-weight: 900;
   letter-spacing: -0.03em; color: var(--text); margin-bottom: 0.5rem;
 }
-.title-tagline {
-  font-size: clamp(1.05rem, 1.9vw, 1.4rem); color: var(--muted);
-  max-width: 600px; text-align: center; line-height: 1.55;
-  margin-bottom: 2.5rem;
+.title-hook {
+  font-size: clamp(1.1rem, 2vw, 1.5rem); color: var(--muted);
+  max-width: 640px; text-align: center; line-height: 1.6;
+  margin-bottom: 0.4rem;
 }
-.title-tagline strong { color: var(--text); }
+.title-hook strong { color: var(--text); }
+.title-sub {
+  font-size: clamp(0.85rem, 1.2vw, 1rem); color: var(--muted);
+  text-align: center; font-style: italic; margin-bottom: 2.2rem;
+}
 .stats-row {
   display: flex; gap: 3rem; flex-wrap: wrap; justify-content: center;
 }
@@ -145,57 +143,10 @@ html, body {
   display: flex; flex-direction: column; gap: 0.6rem;
 }
 .problem-icon { font-size: 2rem; }
-.problem-heading {
-  font-size: 1rem; font-weight: 700; color: var(--text);
-}
-.problem-body {
-  font-size: 0.88rem; color: var(--muted); line-height: 1.6;
-}
+.problem-heading { font-size: 1rem; font-weight: 700; color: var(--text); }
+.problem-body { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
 
-/* ── SLIDE 2 — SOLUTION ── */
-.code-pill {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 0.7rem 1.4rem;
-  font-family: 'Fira Code', 'Cascadia Code', monospace;
-  font-size: clamp(0.78rem, 1.2vw, 1rem); color: var(--blue);
-  margin-bottom: 2rem; white-space: nowrap; overflow-x: auto;
-  max-width: 100%;
-}
-.solution-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem; width: 100%; max-width: 900px;
-}
-.solution-card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.5rem 1.3rem; text-align: center;
-}
-.solution-icon { font-size: 2.2rem; margin-bottom: 0.7rem; }
-.solution-heading { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; }
-.solution-body { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
-
-/* ── SLIDE 3 — PRODUCT ── */
-.product-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem; width: 100%; max-width: 960px; margin-top: 0.5rem;
-}
-.product-card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.5rem 1.3rem;
-  display: flex; flex-direction: column; gap: 0.5rem;
-}
-.product-tag {
-  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--green);
-}
-.product-name { font-size: 1.1rem; font-weight: 700; }
-.product-desc { font-size: 0.84rem; color: var(--muted); line-height: 1.6; flex: 1; }
-.product-cmd {
-  font-family: monospace; font-size: 0.75rem; color: var(--blue);
-  background: var(--bg3); padding: 0.3rem 0.6rem; border-radius: 5px;
-  margin-top: 0.3rem; white-space: nowrap; overflow-x: auto;
-}
-
-/* ── SLIDE 4 — TRACTION ── */
+/* ── SLIDE 3 — TRACTION ── */
 .traction-grid {
   display: grid; grid-template-columns: repeat(4, 1fr);
   gap: 1.5rem; width: 100%; max-width: 900px; margin-bottom: 2rem;
@@ -221,111 +172,34 @@ html, body {
 .quote-text { font-size: 1rem; font-style: italic; color: var(--text); margin-bottom: 0.4rem; }
 .quote-attr { font-size: 0.78rem; color: var(--muted); }
 
-/* ── SLIDE 5 — MARKET ── */
-.market-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem; width: 100%; max-width: 800px; margin-bottom: 2rem;
-}
-.market-card {
+/* ── SLIDE 4 — CLOSE ── */
+.solution-card {
   background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.5rem; text-align: center;
+  border-radius: 12px; padding: 1.5rem 1.3rem; text-align: center;
 }
-.market-type {
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--muted); margin-bottom: 0.4rem;
-}
-.market-label { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.6rem; }
-.market-num {
-  font-size: clamp(2rem, 3.5vw, 2.8rem); font-weight: 900; color: var(--green);
-}
-.beachhead-box {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.2rem 1.6rem;
-  max-width: 800px; text-align: left;
-}
-.beachhead-label {
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--green); margin-bottom: 0.5rem;
-}
-.beachhead-text { font-size: 0.9rem; color: var(--muted); line-height: 1.6; }
+.solution-icon { font-size: 2.2rem; margin-bottom: 0.7rem; }
+.solution-heading { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; }
+.solution-body { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
 
-/* ── SLIDE 6 — BUSINESS MODEL ── */
-.biz-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem; width: 100%; max-width: 960px; margin-top: 0.5rem;
+.bounty-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 0.8rem; width: 100%; max-width: 760px; margin-bottom: 1.6rem;
 }
-.biz-card {
+.bounty-card {
   background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.5rem 1.3rem;
+  border-radius: 10px; padding: 0.9rem 1.2rem;
+  display: flex; flex-direction: column; gap: 0.25rem;
 }
-.biz-num {
-  font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em;
-  text-transform: uppercase; margin-bottom: 0.5rem;
+.bounty-name {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--green);
 }
-.biz-name { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.3rem; }
-.biz-type {
-  font-size: 0.75rem; font-weight: 700; color: var(--green);
-  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.8rem;
-}
-.biz-list { list-style: none; }
-.biz-list li {
-  font-size: 0.85rem; color: var(--muted); padding: 0.25rem 0;
-  border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem;
-  align-items: flex-start;
-}
-.biz-list li:last-child { border-bottom: none; }
-.biz-list li::before { content: "→"; color: var(--blue); flex-shrink: 0; }
-
-/* ── SLIDE 7 — TEAM ── */
-.team-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 2rem; width: 100%; max-width: 900px; margin-top: 0.5rem;
-}
-.team-card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.6rem 1.4rem; text-align: center;
-}
-.team-avatar {
-  width: 56px; height: 56px; border-radius: 50%;
-  background: var(--bg3); border: 2px solid var(--green);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.1rem; font-weight: 800; color: var(--green);
-  margin: 0 auto 1rem;
-}
-.team-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.2rem; }
-.team-role { font-size: 0.78rem; color: var(--green); font-weight: 600; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.team-bio { font-size: 0.83rem; color: var(--muted); line-height: 1.6; }
-
-/* ── SLIDE 8 — ASK ── */
-.ask-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem; width: 100%; max-width: 900px; margin-bottom: 2rem;
-}
-.ask-card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.5rem 1.3rem;
-}
-.ask-num {
-  font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em;
-  text-transform: uppercase; margin-bottom: 0.5rem;
-}
-.ask-milestone { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; }
-.ask-desc { font-size: 0.85rem; color: var(--muted); line-height: 1.6; margin-bottom: 0.8rem; }
-.ask-pct {
-  font-size: 0.82rem; font-weight: 700; color: var(--green);
-  background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.3);
-  padding: 0.25rem 0.6rem; border-radius: 999px; display: inline-block;
-}
-.ask-closing {
-  font-size: clamp(1.1rem, 2vw, 1.5rem); font-weight: 700;
-  color: var(--green); text-align: center;
-}
+.bounty-why { font-size: 0.84rem; color: var(--muted); line-height: 1.5; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
-  .problem-grid, .solution-grid, .product-grid,
-  .biz-grid, .team-grid, .ask-grid { grid-template-columns: 1fr; overflow-y: auto; max-height: 70vh; }
-  .traction-grid, .market-grid { grid-template-columns: repeat(2, 1fr); }
+  .problem-grid, .bounty-grid { grid-template-columns: 1fr; overflow-y: auto; max-height: 70vh; }
+  .traction-grid { grid-template-columns: repeat(2, 1fr); }
   .slide { padding: 3vh 5vw; justify-content: flex-start; padding-top: 4vh; overflow-y: auto; }
 }
 
@@ -341,7 +215,7 @@ html, body {
 <body>
 
 <div id="progress-bar"></div>
-<div id="counter">1 / 9</div>
+<div id="counter">1 / 5</div>
 <div id="hint">← → arrow keys or click to navigate</div>
 
 <button class="nav-btn" id="btn-prev" aria-label="Previous slide">&#8592;</button>
@@ -353,15 +227,16 @@ html, body {
   <div class="slide active" id="slide-0">
     <img src="../../img/clawbio-logo.jpeg" alt="ClawBio" style="width:80px;height:80px;border-radius:16px;object-fit:cover;margin-bottom:0.6rem;">
     <div class="title-brand">ClawBio</div>
-    <p class="title-tagline">
-      ClawBio is where biological AI gets its skills:<br>
-      <strong>a curated, reproducible, open repository any agent can call.</strong>
+    <p class="title-hook">
+      AI agents can do almost anything.<br>
+      <strong>They cannot do biology. Until now.</strong>
     </p>
+    <p class="title-sub">where biological AI gets its skills</p>
     <div class="stats-row">
-      <div class="stat"><div class="stat-num">153</div><div class="stat-label">GitHub Stars</div></div>
-      <div class="stat"><div class="stat-num">23</div><div class="stat-label">Forks</div></div>
+      <div class="stat"><div class="stat-num">156</div><div class="stat-label">GitHub Stars</div></div>
+      <div class="stat"><div class="stat-num">24</div><div class="stat-label">Forks</div></div>
       <div class="stat"><div class="stat-num">21</div><div class="stat-label">Skills</div></div>
-      <div class="stat"><div class="stat-num">1&nbsp;wk</div><div class="stat-label">Old</div></div>
+      <div class="stat"><div class="stat-num">8&nbsp;days</div><div class="stat-label">Zero marketing</div></div>
     </div>
     <div class="title-github">clawbio.ai</div>
   </div>
@@ -369,83 +244,64 @@ html, body {
   <!-- SLIDE 1: PROBLEM -->
   <div class="slide" id="slide-1">
     <div class="label">The Problem</div>
-    <h2 class="title">Biological research <span class="em">systematically promotes disparities</span> by design</h2>
+    <h2 class="title">Three unsolved problems. <span class="em">One platform.</span></h2>
     <div class="problem-grid">
       <div class="problem-card">
         <div class="problem-icon">&#129302;</div>
         <div class="problem-heading">AI agents cannot call biology</div>
+        <div class="problem-body">No standardised way to call a genomic method. Every lab reinvents the wheel. The infrastructure layer was missing.</div>
         <div style="font-size:0.7rem;color:var(--green);margin-top:auto;padding-top:0.7rem;font-style:italic;">Corpas et al. (under review, Comms Biology)</div>
       </div>
       <div class="problem-card">
         <div class="problem-icon">&#128279;</div>
-        <div class="problem-heading">Biobanks, Trials &amp; Literature Exclude 1.5 Billion People</div>
+        <div class="problem-heading">1.5 billion people are excluded</div>
+        <div class="problem-body">Biobanks, clinical trials, and literature systematically exclude the world's most vulnerable populations — by design.</div>
         <div style="font-size:0.7rem;color:var(--green);margin-top:auto;padding-top:0.7rem;font-style:italic;">Corpas et al., medRxiv 2026 · <a href="https://doi.org/10.64898/2026.02.10.26346004" target="_blank" style="color:var(--green);">doi:10.64898/2026.02.10.26346004</a></div>
       </div>
       <div class="problem-card">
         <div class="problem-icon">&#128196;</div>
-        <div class="problem-heading">LLMs are empirically unreliable for biology</div>
+        <div class="problem-heading">LLMs hallucinate biology</div>
+        <div class="problem-body">Empirically unreliable for clinical or genomic decisions. You cannot trust them without validated, auditable methods underneath.</div>
         <div style="font-size:0.7rem;color:var(--green);margin-top:auto;padding-top:0.7rem;font-style:italic;">Corpas &amp; Iacoangeli (in revision, PLOS Computational Biology) · <a href="https://www.researchsquare.com/article/rs-6098960/v1" target="_blank" style="color:var(--green);">researchsquare.com/article/rs-6098960/v1</a></div>
       </div>
     </div>
   </div>
 
-  <!-- SLIDE 2: SOLUTION -->
+  <!-- SLIDE 2: LIVE DEMO -->
   <div class="slide" id="slide-2">
-    <div class="label">The Solution</div>
-    <h2 class="title">The paper ships <span class="em">as the skill</span></h2>
-    <div class="code-pill">$ openclaw install pharmgx-reporter &amp;&amp; openclaw run pharmgx-reporter</div>
-    <div class="solution-grid">
-      <div class="solution-card">
-        <div class="solution-icon">&#129302;</div>
-        <div class="solution-heading">Agent-Native</div>
-        <div class="solution-body">Any AI agent can discover, install, and call ClawBio skills. We built the infrastructure layer biological AI was missing.</div>
+    <div class="label">Live Demo · The paper ships as the skill</div>
+    <h2 class="title">Snap a drug. <span class="em">Get your personalised dose.</span></h2>
+    <div style="display:flex;gap:2.5rem;align-items:center;justify-content:center;width:100%;max-width:900px;margin-top:1rem;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.8rem;">
+        <img src="../../img/terri_attwood_avatar_top_left_4096.png" alt="RoboTerri" style="width:220px;height:220px;border-radius:50%;object-fit:cover;border:3px solid var(--purple);">
+        <div style="font-size:1rem;font-weight:700;">RoboTerri</div>
+        <div style="font-size:0.8rem;color:var(--muted);">Telegram · Drug Photo skill</div>
       </div>
-      <div class="solution-card">
-        <div class="solution-icon">&#128230;</div>
-        <div class="solution-heading">One Command</div>
-        <div class="solution-body">The API biology never had. Install any published method in seconds. No setup, no dependency hell, no PhD required.</div>
+      <div style="font-size:2.5rem;color:var(--muted);">&#8594;</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.8rem;">
+        <img src="../../skills/drug-photo/demo-images/00-00-warfarin.jpg" alt="Warfarin" style="width:220px;height:220px;border-radius:12px;object-fit:cover;border:3px solid var(--border);">
+        <div style="font-size:1rem;font-weight:700;">Warfarin 2mg</div>
+        <div style="font-size:0.8rem;color:var(--muted);">Photo → genotype-matched dosage card</div>
       </div>
-      <div class="solution-card">
-        <div class="solution-icon">&#128300;</div>
-        <div class="solution-heading">Auditable</div>
-        <div class="solution-body">Every skill is validated against its published paper. Audit trail built in. Clinical-grade reproducibility from day one.</div>
+      <div style="font-size:2.5rem;color:var(--muted);">&#8594;</div>
+      <div style="background:var(--bg2);border:1px solid var(--green);border-radius:12px;padding:1.4rem 1.6rem;max-width:200px;">
+        <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:0.6rem;">Result · &lt;2 seconds</div>
+        <div style="font-size:0.85rem;color:var(--text);line-height:1.6;">&#128683; <strong>AVOID</strong> standard dose<br>CYP2C9 *1/*3<br>Reduced metabolism<br><br>&#9888;&#65039; Use 30–50% lower dose</div>
       </div>
+    </div>
+    <div style="margin-top:1.4rem;font-size:0.85rem;color:var(--muted);text-align:center;max-width:660px;line-height:1.6;">
+      Every ClawBio skill works this way — callable by any AI agent, any platform, any researcher.<br>
+      <span style="font-family:monospace;color:var(--blue);font-size:0.82rem;">openclaw install drug-photo &nbsp;·&nbsp; openclaw install pharmgx-reporter &nbsp;·&nbsp; openclaw install equity-scorer</span>
     </div>
   </div>
 
-  <!-- SLIDE 3: PRODUCT -->
+  <!-- SLIDE 3: TRACTION -->
   <div class="slide" id="slide-3">
-    <div class="label">Product</div>
-    <h2 class="title">21 skills. <span class="em">Three flagship use cases.</span></h2>
-    <div class="product-grid">
-      <div class="product-card">
-        <div class="product-tag">7% of patients get the wrong drug</div>
-        <div class="product-name">&#128138; PharmGx Reporter</div>
-        <div class="product-desc">Wrong drug. Wrong dose. From data patients already own.</div>
-        <div class="product-cmd">openclaw install pharmgx-reporter</div>
-      </div>
-      <div class="product-card">
-        <div class="product-tag">175 diseases measured for equity gaps</div>
-        <div class="product-name">&#9878;&#65039; Equity Scorer</div>
-        <div class="product-desc">Makes research bias measurable. Then actionable.</div>
-        <div class="product-cmd">openclaw install equity-scorer</div>
-      </div>
-      <div class="product-card" style="border-color:var(--green);">
-        <div class="product-tag">&#9733; Live demo — Telegram</div>
-        <div class="product-name">&#128247; Drug Photo</div>
-        <div class="product-desc">Snap a pill. Get your personalised dose. Powered by RoboTerri.</div>
-        <div class="product-cmd">openclaw install drug-photo</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SLIDE 4: TRACTION -->
-  <div class="slide" id="slide-4">
     <div class="label">Traction</div>
-    <h2 class="title">Organic. <span class="em">No marketing.</span> One week.</h2>
+    <h2 class="title">156 stars. 433 developers running the code. <span class="em">8 days.</span></h2>
     <div class="traction-grid">
       <div class="traction-card">
-        <div class="traction-num">153</div>
+        <div class="traction-num">156</div>
         <div class="traction-label">GitHub Stars</div>
         <div class="traction-sub">bioinformatics community, organic</div>
       </div>
@@ -454,15 +310,15 @@ html, body {
         <div class="traction-label">Unique Visitors</div>
         <div class="traction-sub">6,754 total page views</div>
       </div>
-      <div class="traction-card">
-        <div class="traction-num">1,862</div>
-        <div class="traction-label">Clones</div>
-        <div class="traction-sub">433 unique — people running the code</div>
+      <div class="traction-card" style="border-color:var(--green);">
+        <div class="traction-num">433</div>
+        <div class="traction-label">Unique Cloners</div>
+        <div class="traction-sub">1,862 total clones — people running it</div>
       </div>
       <div class="traction-card">
-        <div class="traction-num">23</div>
+        <div class="traction-num">24</div>
         <div class="traction-label">Forks</div>
-        <div class="traction-sub">3 releases · 1 external PR</div>
+        <div class="traction-sub">3 releases · 1 external PR merged</div>
       </div>
     </div>
     <div style="width:100%;max-width:900px;margin-bottom:1.2rem;">
@@ -501,113 +357,26 @@ html, body {
     </div>
   </div>
 
-  <!-- SLIDE 5: LIVE DEMO -->
-  <div class="slide" id="slide-5">
-    <div class="label">Live Demo</div>
-    <h2 class="title">Snap a drug. <span class="em">Get your personalised dose.</span></h2>
-    <div style="display:flex;gap:2.5rem;align-items:center;justify-content:center;width:100%;max-width:900px;margin-top:1rem;flex-wrap:wrap;">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:0.8rem;">
-        <img src="../../img/terri_attwood_avatar_top_left_4096.png" alt="RoboTerri" style="width:220px;height:220px;border-radius:50%;object-fit:cover;border:3px solid var(--purple);">
-        <div style="font-size:1rem;font-weight:700;">RoboTerri</div>
-        <div style="font-size:0.8rem;color:var(--muted);">Telegram · Drug Photo skill</div>
-      </div>
-      <div style="font-size:2.5rem;color:var(--muted);">&#8594;</div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:0.8rem;">
-        <img src="../../skills/drug-photo/demo-images/00-00-warfarin.jpg" alt="Warfarin" style="width:220px;height:220px;border-radius:12px;object-fit:cover;border:3px solid var(--border);">
-        <div style="font-size:1rem;font-weight:700;">Warfarin 2mg</div>
-        <div style="font-size:0.8rem;color:var(--muted);">Photo → genotype-matched dosage card</div>
-      </div>
-      <div style="font-size:2.5rem;color:var(--muted);">&#8594;</div>
-      <div style="background:var(--bg2);border:1px solid var(--green);border-radius:12px;padding:1.4rem 1.6rem;max-width:200px;">
-        <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:0.6rem;">Result · &lt;2 seconds</div>
-        <div style="font-size:0.85rem;color:var(--text);line-height:1.6;">&#128683; <strong>AVOID</strong> standard dose<br>CYP2C9 *1/*3<br>Reduced metabolism<br><br>&#9888;&#65039; Use 30–50% lower dose</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SLIDE 6: BUSINESS MODEL -->
-  <div class="slide" id="slide-6">
-    <div class="label">Business Model</div>
-    <h2 class="title">Open core. <span class="em">Paid ecosystem.</span></h2>
-    <div class="biz-grid">
-      <div class="biz-card">
-        <div class="biz-num">01</div>
-        <div class="biz-name">Open Core</div>
-        <div class="biz-type">Free · MIT licensed</div>
-        <ul class="biz-list">
-          <li>Full skill library</li>
-          <li>OpenClaw runtime</li>
-          <li>Community contributions</li>
-        </ul>
-      </div>
-      <div class="biz-card">
-        <div class="biz-num">02</div>
-        <div class="biz-name">ClawHub Registry</div>
-        <div class="biz-type">Institutional tier</div>
-        <ul class="biz-list">
-          <li>Verified clinical skills</li>
-          <li>Audit trail + compliance</li>
-          <li>Private skill hosting</li>
-        </ul>
-      </div>
-      <div class="biz-card">
-        <div class="biz-num">03</div>
-        <div class="biz-name">Skill Marketplace</div>
-        <div class="biz-type">Revenue share</div>
-        <ul class="biz-list">
-          <li>Authors publish paid skills</li>
-          <li>20% platform cut</li>
-          <li>Scales without headcount</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
-  <!-- SLIDE 7: TEAM -->
-  <div class="slide" id="slide-7">
-    <div class="label">Team</div>
-    <h2 class="title">We have <span class="em">lived this problem.</span></h2>
-    <div class="team-grid">
-      <div class="team-card">
-        <div class="team-avatar">MC</div>
-        <div class="team-name">Manuel Corpas</div>
-        <div class="team-role">Founder</div>
-        <div class="team-bio">Bioinformatics researcher and developer. Alan Turing Institute Fellow. Senior Lecturer at Westminster. Built ClawBio from lived experience of the reproducibility crisis.</div>
-      </div>
-      <div class="team-card">
-        <div class="team-avatar">DD</div>
-        <div class="team-name">David de Lorenzo</div>
-        <div class="team-role">Bioinformatics Developer</div>
-        <div class="team-bio">UCL researcher. Contributed the NutriGx Advisor skill. ClawBio's academic validator and bridge to clinical genomics institutions.</div>
-      </div>
-      <div class="team-card">
-        <div class="team-avatar">JM</div>
-        <div class="team-name">Jay Moore</div>
-        <div class="team-role">Bioinformatics Developer</div>
-        <div class="team-bio">Core developer on the ClawBio skill library. Builds and maintains the skill pipeline infrastructure.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SLIDE 8: IMPACT CLOSE -->
-  <div class="slide" id="slide-8">
-    <div class="label">Papers for Biology</div>
+  <!-- SLIDE 4: CLOSE -->
+  <div class="slide" id="slide-4">
+    <div class="label">Why we're here</div>
     <h2 class="title">Biology should ship as <span class="em">executable skills</span>, not PDFs.</h2>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;width:100%;max-width:900px;margin:1rem 0 1.8rem;">
-      <div class="solution-card">
-        <div class="solution-icon">&#127981;</div>
-        <div class="solution-heading">SDG 3</div>
-        <div class="solution-body">Good health &amp; well-being. 7% of patients are poor CYP2D6 metabolisers — prescribed drugs that don't work or harm them. ClawBio fixes this with a free skill.</div>
+    <div class="bounty-grid">
+      <div class="bounty-card">
+        <div class="bounty-name">&#129516; BioHack + Biodock</div>
+        <div class="bounty-why">The only open bioinformatics skill infrastructure in this room. Every other bio team built a tool; we built the layer they should all run on.</div>
       </div>
-      <div class="solution-card">
-        <div class="solution-icon">&#9878;&#65039;</div>
-        <div class="solution-heading">SDG 10</div>
-        <div class="solution-body">Reduced inequalities. NTDs are 38% more isolated in research than non-NTDs. The Equity Scorer makes this bias measurable and actionable.</div>
+      <div class="bounty-card">
+        <div class="bounty-name">&#127757; AI Agents for Good</div>
+        <div class="bounty-why">NTDs are 38% more research-isolated. 1.5B people excluded from trials. The Equity Scorer turns invisible bias into policy-ready evidence.</div>
       </div>
-      <div class="solution-card">
-        <div class="solution-icon">&#128200;</div>
-        <div class="solution-heading">One week. Zero marketing.</div>
-        <div class="solution-body">153 stars · 2,617 unique visitors · 1,862 clones · 4 contributors · 3 countries. The bioinformatics community was waiting for this.</div>
+      <div class="bounty-card">
+        <div class="bounty-name">&#128188; CEO Claw Challenge</div>
+        <div class="bounty-why">A biotech CEO can deploy 21 validated genomic analysis skills to their entire team today. No bioinformatician required.</div>
+      </div>
+      <div class="bounty-card">
+        <div class="bounty-name">&#129309; Human for Claw / Claw for Human</div>
+        <div class="bounty-why">4 contributors. 3 countries. 8 days. External PRs already merged. This is open science working as it should.</div>
       </div>
     </div>
     <div style="font-size:clamp(1.2rem,2.2vw,1.7rem);font-weight:800;color:var(--green);text-align:center;margin-bottom:1.5rem;">
@@ -636,7 +405,6 @@ function goTo(n) {
   slides[current].classList.add('active');
   document.getElementById('counter').textContent = (current + 1) + ' / ' + total;
   document.getElementById('progress-bar').style.width = ((current + 1) / total * 100) + '%';
-  // hide hint after first advance
   if (current > 0) document.getElementById('hint').classList.add('hidden');
 }
 
