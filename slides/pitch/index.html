@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ClawBio — DoraHacks Pitch 2026</title>
-<meta name="description" content="ClawBio is where biological AI gets its skills: a curated, reproducible, open repository any agent can call.">
-<meta property="og:title" content="ClawBio — DoraHacks Pitch 2026">
-<meta property="og:description" content="ClawBio is where biological AI gets its skills: a curated, reproducible, open repository any agent can call.">
+<title>ClawBio — VC Pitch 2026</title>
+<meta name="description" content="ClawBio is the Hugging Face for Biology: an open-source, reproducible library of biomedical skills that any agent can run.">
+<meta property="og:title" content="ClawBio — The Hugging Face for Biology">
+<meta property="og:description" content="ClawBio is the Hugging Face for Biology: an open-source, reproducible library of biomedical skills that any agent can run.">
 <meta property="og:image" content="https://clawbio.ai/img/pitch-og.png">
 <meta property="og:url" content="https://clawbio.ai/slides/pitch/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ClawBio — DoraHacks Pitch 2026">
-<meta name="twitter:description" content="AI agents can do almost anything. They cannot do biology. Until now. 156 stars · 21 skills · 8 days.">
+<meta name="twitter:title" content="ClawBio — The Hugging Face for Biology">
+<meta name="twitter:description" content="The Hugging Face for Biology. 150+ stars · 21 skills · 2,000+ clones · 10 days. No paid marketing.">
 <meta name="twitter:image" content="https://clawbio.ai/img/pitch-og.png?v=2">
 <link rel="icon" type="image/x-icon" href="../../img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="../../img/favicon-32.png">
@@ -228,15 +228,15 @@ html, body {
     <img src="../../img/clawbio-logo.jpeg" alt="ClawBio" style="width:80px;height:80px;border-radius:16px;object-fit:cover;margin-bottom:0.6rem;">
     <div class="title-brand">ClawBio</div>
     <p class="title-hook">
-      AI agents can do almost anything.<br>
-      <strong>They cannot do biology. Until now.</strong>
+      <strong>The Hugging Face for Biology.</strong><br>
+      An open-source, reproducible library of biomedical skills<br>that any agent can run with a single command.
     </p>
-    <p class="title-sub">where biological AI gets its skills</p>
+    <p class="title-sub">the execution layer for biological AI</p>
     <div class="stats-row">
-      <div class="stat"><div class="stat-num">156</div><div class="stat-label">GitHub Stars</div></div>
-      <div class="stat"><div class="stat-num">24</div><div class="stat-label">Forks</div></div>
+      <div class="stat"><div class="stat-num">150+</div><div class="stat-label">GitHub Stars</div></div>
+      <div class="stat"><div class="stat-num">2,000+</div><div class="stat-label">Clones</div></div>
       <div class="stat"><div class="stat-num">21</div><div class="stat-label">Skills</div></div>
-      <div class="stat"><div class="stat-num">8&nbsp;days</div><div class="stat-label">Zero marketing</div></div>
+      <div class="stat"><div class="stat-num">10&nbsp;days</div><div class="stat-label">Zero marketing</div></div>
     </div>
     <div class="title-github">clawbio.ai</div>
   </div>
@@ -244,143 +244,127 @@ html, body {
   <!-- SLIDE 1: PROBLEM -->
   <div class="slide" id="slide-1">
     <div class="label">The Problem</div>
-    <h2 class="title">Three unsolved problems. <span class="em">One platform.</span></h2>
+    <h2 class="title">Biology is trapped in PDFs. <span class="em">That has to change.</span></h2>
     <div class="problem-grid">
       <div class="problem-card">
-        <div class="problem-icon">&#129302;</div>
-        <div class="problem-heading">AI agents cannot call biology</div>
-        <div class="problem-body">No standardised way to call a genomic method. Every lab reinvents the wheel. The infrastructure layer was missing.</div>
-        <div style="font-size:0.7rem;color:var(--green);margin-top:auto;padding-top:0.7rem;font-style:italic;">Corpas et al. (under review, Comms Biology)</div>
-      </div>
-      <div class="problem-card">
-        <div class="problem-icon">&#128279;</div>
-        <div class="problem-heading">1.5 billion people are excluded</div>
-        <div class="problem-body">Biobanks, clinical trials, and literature systematically exclude the world's most vulnerable populations — by design.</div>
-        <div style="font-size:0.7rem;color:var(--green);margin-top:auto;padding-top:0.7rem;font-style:italic;">Corpas et al., medRxiv 2026 · <a href="https://doi.org/10.64898/2026.02.10.26346004" target="_blank" style="color:var(--green);">doi:10.64898/2026.02.10.26346004</a></div>
-      </div>
-      <div class="problem-card">
         <div class="problem-icon">&#128196;</div>
-        <div class="problem-heading">LLMs hallucinate biology</div>
-        <div class="problem-body">Empirically unreliable for clinical or genomic decisions. You cannot trust them without validated, auditable methods underneath.</div>
-        <div style="font-size:0.7rem;color:var(--green);margin-top:auto;padding-top:0.7rem;font-style:italic;">Corpas &amp; Iacoangeli (in revision, PLOS Computational Biology) · <a href="https://www.researchsquare.com/article/rs-6098960/v1" target="_blank" style="color:var(--green);">researchsquare.com/article/rs-6098960/v1</a></div>
+        <div class="problem-heading">Knowledge is disconnected</div>
+        <div class="problem-body">Papers describe methods, but the code, data, parameters, and validation are scattered. Biology is hard to reproduce for humans — and almost impossible for AI agents.</div>
       </div>
+      <div class="problem-card">
+        <div class="problem-icon">&#128274;</div>
+        <div class="problem-heading">Sensitive data cannot leave</div>
+        <div class="problem-body">Health and genomic data must stay on your own device. Cloud-only solutions are a non-starter for clinical and personal genomics workflows.</div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-icon">&#129302;</div>
+        <div class="problem-heading">No infrastructure layer</div>
+        <div class="problem-body">AI agents have no standardised way to call biological methods. Every lab reinvents the wheel. The foundational execution layer was missing.</div>
+      </div>
+    </div>
+    <div style="margin-top:1.2rem;font-size:1rem;color:var(--muted);text-align:center;max-width:700px;line-height:1.7;">
+      ClawBio turns biomedical methods into <strong style="color:var(--text);">reusable, verifiable, local-first, agent-native skills</strong>.<br>Instead of static papers, you get workflows that actually run.
     </div>
   </div>
 
   <!-- SLIDE 2: LIVE DEMO -->
   <div class="slide" id="slide-2">
-    <div class="label">Live Demo · The paper ships as the skill</div>
-    <h2 class="title">Snap a drug. <span class="em">Get your personalised dose.</span></h2>
-    <div style="display:flex;gap:2.5rem;align-items:center;justify-content:center;width:100%;max-width:900px;margin-top:1rem;flex-wrap:wrap;">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:0.8rem;">
-        <img src="../../img/terri_attwood_avatar_top_left_4096.png" alt="RoboTerri" style="width:220px;height:220px;border-radius:50%;object-fit:cover;border:3px solid var(--purple);">
-        <div style="font-size:1rem;font-weight:700;">RoboTerri</div>
-        <div style="font-size:0.8rem;color:var(--muted);">Telegram · Drug Photo skill</div>
+    <div class="label">Live Demo · Pharmacogenomics</div>
+    <h2 class="title">Snap a drug. <span class="em">Get your personalised risk.</span></h2>
+    <div style="display:flex;gap:2rem;align-items:center;justify-content:center;width:100%;max-width:960px;margin-top:1rem;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.6rem;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.4rem;text-align:center;width:200px;">
+          <div style="font-size:2rem;margin-bottom:0.4rem;">&#128187;</div>
+          <div style="font-size:0.9rem;font-weight:700;">Show terminal</div>
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.3rem;">One of 21 skills<br>already available</div>
+        </div>
       </div>
-      <div style="font-size:2.5rem;color:var(--muted);">&#8594;</div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:0.8rem;">
-        <img src="../../skills/drug-photo/demo-images/00-00-warfarin.jpg" alt="Warfarin" style="width:220px;height:220px;border-radius:12px;object-fit:cover;border:3px solid var(--border);">
-        <div style="font-size:1rem;font-weight:700;">Warfarin 2mg</div>
-        <div style="font-size:0.8rem;color:var(--muted);">Photo → genotype-matched dosage card</div>
+      <div style="font-size:2rem;color:var(--muted);">&#8594;</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0.6rem;">
+        <img src="../../skills/drug-photo/demo-images/00-00-warfarin.jpg" alt="Warfarin" style="width:200px;height:200px;border-radius:12px;object-fit:cover;border:3px solid var(--border);">
+        <div style="font-size:0.9rem;font-weight:700;">&#128241; Photo of drug box</div>
+        <div style="font-size:0.78rem;color:var(--muted);max-width:200px;text-align:center;">Pharmacy or clinic.<br>Identifies drug, pulls PGx guidance,<br>checks your genome.</div>
       </div>
-      <div style="font-size:2.5rem;color:var(--muted);">&#8594;</div>
-      <div style="background:var(--bg2);border:1px solid var(--green);border-radius:12px;padding:1.4rem 1.6rem;max-width:200px;">
-        <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:0.6rem;">Result · &lt;2 seconds</div>
-        <div style="font-size:0.85rem;color:var(--text);line-height:1.6;">&#128683; <strong>AVOID</strong> standard dose<br>CYP2C9 *1/*3<br>Reduced metabolism<br><br>&#9888;&#65039; Use 30–50% lower dose</div>
+      <div style="font-size:2rem;color:var(--muted);">&#8594;</div>
+      <div style="background:var(--bg2);border:1px solid var(--green);border-radius:12px;padding:1.4rem 1.6rem;max-width:220px;">
+        <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:0.6rem;">Warfarin · High Risk</div>
+        <div style="font-size:0.85rem;color:var(--text);line-height:1.6;">&#128683; <strong>AVOID</strong> standard dose<br>CYP2C9 *1/*3<br>Reduced metabolism<br><br>&#9888;&#65039; Use 30–50% lower dose<br><span style="font-size:0.75rem;color:var(--muted);">For clinician review</span></div>
       </div>
     </div>
-    <div style="margin-top:1.4rem;font-size:0.85rem;color:var(--muted);text-align:center;max-width:660px;line-height:1.6;">
-      Every ClawBio skill works this way — callable by any AI agent, any platform, any researcher.<br>
-      <span style="font-family:monospace;color:var(--blue);font-size:0.82rem;">openclaw install drug-photo &nbsp;·&nbsp; openclaw install pharmgx-reporter &nbsp;·&nbsp; openclaw install equity-scorer</span>
+    <div style="margin-top:1.4rem;font-size:0.92rem;color:var(--muted);text-align:center;max-width:700px;line-height:1.7;">
+      The whole workflow is <strong style="color:var(--text);">reproducible, inspectable, and executable by any agent</strong>.
     </div>
   </div>
 
-  <!-- SLIDE 3: TRACTION -->
+  <!-- SLIDE 3: TRACTION & PLATFORM -->
   <div class="slide" id="slide-3">
-    <div class="label">Traction</div>
-    <h2 class="title">156 stars. 433 developers running the code. <span class="em">8 days.</span></h2>
+    <div class="label">Traction &amp; Platform</div>
+    <h2 class="title">2,000+ clones. 150+ stars. <span class="em">10 days. No paid marketing.</span></h2>
     <div class="traction-grid">
-      <div class="traction-card">
-        <div class="traction-num">156</div>
-        <div class="traction-label">GitHub Stars</div>
-        <div class="traction-sub">bioinformatics community, organic</div>
-      </div>
-      <div class="traction-card">
-        <div class="traction-num">2,617</div>
-        <div class="traction-label">Unique Visitors</div>
-        <div class="traction-sub">6,754 total page views</div>
-      </div>
       <div class="traction-card" style="border-color:var(--green);">
-        <div class="traction-num">433</div>
-        <div class="traction-label">Unique Cloners</div>
-        <div class="traction-sub">1,862 total clones — people running it</div>
+        <div class="traction-num">2,000+</div>
+        <div class="traction-label">Clones</div>
+        <div class="traction-sub">people running the code</div>
       </div>
       <div class="traction-card">
-        <div class="traction-num">24</div>
-        <div class="traction-label">Forks</div>
-        <div class="traction-sub">3 releases · 1 external PR merged</div>
+        <div class="traction-num">150+</div>
+        <div class="traction-label">GitHub Stars</div>
+        <div class="traction-sub">organic, no marketing</div>
+      </div>
+      <div class="traction-card">
+        <div class="traction-num">21</div>
+        <div class="traction-label">Skills</div>
+        <div class="traction-sub">health equity, nutrigenomics, PGx &amp; more</div>
+      </div>
+      <div class="traction-card">
+        <div class="traction-num">Live</div>
+        <div class="traction-label">Telegram &amp; WhatsApp</div>
+        <div class="traction-sub">already deployed on two platforms</div>
       </div>
     </div>
-    <div style="width:100%;max-width:900px;margin-bottom:1.2rem;">
-      <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:0.7rem;">Where visitors came from</div>
-      <div style="display:flex;flex-direction:column;gap:0.4rem;">
-        <div style="display:flex;align-items:center;gap:0.8rem;">
-          <div style="width:110px;font-size:0.8rem;color:var(--muted);text-align:right;flex-shrink:0;">LinkedIn</div>
-          <div style="flex:1;background:var(--bg3);border-radius:999px;height:10px;overflow:hidden;"><div style="width:100%;height:100%;background:var(--green);border-radius:999px;"></div></div>
-          <div style="width:40px;font-size:0.8rem;color:var(--text);font-weight:700;">1,531</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.8rem;">
-          <div style="width:110px;font-size:0.8rem;color:var(--muted);text-align:right;flex-shrink:0;">Google</div>
-          <div style="flex:1;background:var(--bg3);border-radius:999px;height:10px;overflow:hidden;"><div style="width:45%;height:100%;background:var(--blue);border-radius:999px;"></div></div>
-          <div style="width:40px;font-size:0.8rem;color:var(--text);font-weight:700;">690</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.8rem;">
-          <div style="width:110px;font-size:0.8rem;color:var(--muted);text-align:right;flex-shrink:0;">GitHub</div>
-          <div style="flex:1;background:var(--bg3);border-radius:999px;height:10px;overflow:hidden;"><div style="width:37%;height:100%;background:var(--blue);border-radius:999px;"></div></div>
-          <div style="width:40px;font-size:0.8rem;color:var(--text);font-weight:700;">569</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.8rem;">
-          <div style="width:110px;font-size:0.8rem;color:var(--muted);text-align:right;flex-shrink:0;">MS Teams</div>
-          <div style="flex:1;background:var(--bg3);border-radius:999px;height:10px;overflow:hidden;"><div style="width:5%;height:100%;background:var(--purple);border-radius:999px;"></div></div>
-          <div style="width:40px;font-size:0.8rem;color:var(--text);font-weight:700;">82</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.8rem;">
-          <div style="width:110px;font-size:0.8rem;color:var(--muted);text-align:right;flex-shrink:0;">Slack</div>
-          <div style="flex:1;background:var(--bg3);border-radius:999px;height:10px;overflow:hidden;"><div style="width:2%;height:100%;background:var(--purple);border-radius:999px;"></div></div>
-          <div style="width:40px;font-size:0.8rem;color:var(--text);font-weight:700;">26</div>
-        </div>
+    <div style="width:100%;max-width:800px;margin-bottom:1.2rem;">
+      <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-bottom:0.7rem;">The pull is real</div>
+      <div style="display:flex;flex-direction:column;gap:0.6rem;font-size:0.9rem;color:var(--muted);line-height:1.7;">
+        <div>&#10003; People found it organically and started using it</div>
+        <div>&#10003; External contributors already submitting code</div>
+        <div>&#10003; Community growing across 3+ countries</div>
       </div>
     </div>
-    <div class="quote-block">
-      <div class="quote-text">"This is what the bioinformatics community has been waiting for."</div>
-      <div class="quote-attr">GitHub Discussions, Day 3</div>
+    <div style="margin-top:0.5rem;font-size:0.95rem;color:var(--text);text-align:center;max-width:700px;line-height:1.7;">
+      Pharmacogenomics is only the first wedge. The bigger opportunity is the <strong style="color:var(--green);">platform itself</strong>: the infrastructure layer where developers, researchers, and healthcare teams discover, verify, and run trusted biological skills.
     </div>
   </div>
 
   <!-- SLIDE 4: CLOSE -->
   <div class="slide" id="slide-4">
-    <div class="label">Why we're here</div>
-    <h2 class="title">Biology should ship as <span class="em">executable skills</span>, not PDFs.</h2>
+    <div class="label">The Ask</div>
+    <h2 class="title">Biology should run as <span class="em">trusted, reproducible skills</span> — not PDFs.</h2>
+    <div style="max-width:760px;text-align:center;margin-bottom:2rem;">
+      <div style="font-size:1.05rem;color:var(--muted);line-height:1.8;">
+        ClawBio is building <strong style="color:var(--text);">the execution layer for biological AI</strong>.<br>
+        We already have early traction, a live product, and a community starting to build with us.
+      </div>
+    </div>
     <div class="bounty-grid">
       <div class="bounty-card">
-        <div class="bounty-name">&#129516; BioHack + Biodock</div>
-        <div class="bounty-why">The only open bioinformatics skill infrastructure in this room. Every other bio team built a tool; we built the layer they should all run on.</div>
+        <div class="bounty-name">&#127919; Early traction</div>
+        <div class="bounty-why">2,000+ clones, 150+ stars, external contributors — all organic in 10 days. Live on Telegram and WhatsApp.</div>
       </div>
       <div class="bounty-card">
-        <div class="bounty-name">&#127757; AI Agents for Good</div>
-        <div class="bounty-why">NTDs are 38% more research-isolated. 1.5B people excluded from trials. The Equity Scorer turns invisible bias into policy-ready evidence.</div>
+        <div class="bounty-name">&#128274; Local-first by design</div>
+        <div class="bounty-why">Sensitive health and genomic data stays on your device. Every skill is reproducible, inspectable, and auditable.</div>
       </div>
       <div class="bounty-card">
-        <div class="bounty-name">&#128188; CEO Claw Challenge</div>
-        <div class="bounty-why">A biotech CEO can deploy 21 validated genomic analysis skills to their entire team today. No bioinformatician required.</div>
+        <div class="bounty-name">&#129516; Open platform</div>
+        <div class="bounty-why">21 skills across pharmacogenomics, health equity, nutrigenomics and more. Developers and researchers are already building on it.</div>
       </div>
       <div class="bounty-card">
-        <div class="bounty-name">&#129309; Human for Claw / Claw for Human</div>
-        <div class="bounty-why">4 contributors. 3 countries. 8 days. External PRs already merged. This is open science working as it should.</div>
+        <div class="bounty-name">&#129309; What we're looking for</div>
+        <div class="bounty-why">The right investors, collaborators, and design partners to help make ClawBio the default platform for executable biology.</div>
       </div>
     </div>
     <div style="font-size:clamp(1.2rem,2.2vw,1.7rem);font-weight:800;color:var(--green);text-align:center;margin-bottom:1.5rem;">
-      ClawBio is where biological AI gets its skills.
+      ClawBio: the execution layer for biological AI.
     </div>
     <div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;">
       <a href="https://github.com/ClawBio/ClawBio" target="_blank" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.5rem 1.1rem;border-radius:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:0.85rem;font-weight:600;">&#11088; GitHub</a>
