@@ -2,6 +2,8 @@
 
 We welcome skills from anyone working in bioinformatics, computational biology, or related fields.
 
+**Join the contributors community: [t.me/ClawBioContributors](https://t.me/ClawBioContributors)**
+
 ## How to Contribute a Skill
 
 ### 1. Copy the template

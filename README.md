@@ -373,6 +373,8 @@ We want skills from the bioinformatics community. If you work with genomics, pro
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the submission process and [templates/SKILL-TEMPLATE.md](templates/SKILL-TEMPLATE.md) for the skill template.
 
+**Join the contributors community on Telegram: [t.me/ClawBioContributors](https://t.me/ClawBioContributors)**
+
 ---
 
 ## In the Wild

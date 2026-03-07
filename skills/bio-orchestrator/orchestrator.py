@@ -130,6 +130,26 @@ def detect_skill_from_query(query: str) -> str | None:
     return None
 
 
+def detect_skill_with_flock(query: str) -> tuple[str | None, str]:
+    """Use FLock API (open-source LLM) to route ambiguous queries.
+
+    Returns (skill_name, reasoning) or (None, error_message).
+    Falls back gracefully if FLock is not configured.
+    """
+    try:
+        from clawbio.providers.flock import FlockRouter
+        router = FlockRouter()
+        result = router.route_query_safe(query)
+        skill = result.get("skill")
+        reasoning = result.get("reasoning", "")
+        confidence = result.get("confidence", 0.0)
+        if skill and confidence >= 0.5:
+            return skill, f"FLock LLM routing (confidence={confidence:.1%}): {reasoning}"
+        return None, f"FLock LLM low confidence ({confidence:.1%}): {reasoning}"
+    except (ImportError, ValueError) as e:
+        return None, f"FLock not available: {e}"
+
+
 def sha256_file(filepath: Path) -> str:
     """Compute SHA-256 checksum of a file (delegates to shared library)."""
     return _shared_sha256(filepath)
@@ -272,6 +292,8 @@ def main() -> None:
     parser.add_argument("--output", "-o", default=".", help="Output directory for reports")
     parser.add_argument("--list-skills", action="store_true", help="List available skills")
     parser.add_argument("--multi", action="store_true", help="Detect and run all matching skills (not just first)")
+    parser.add_argument("--provider", choices=["keyword", "flock"], default="keyword",
+                        help="Routing strategy: 'keyword' (default, rule-based) or 'flock' (open-source LLM via FLock API)")
     args = parser.parse_args()
 
     if args.list_skills:
@@ -346,6 +368,24 @@ def main() -> None:
     else:
         skill = None
         method = "none"
+
+    # Fallback: if keyword matching failed, try FLock LLM routing
+    if not skill and args.provider == "flock" and args.input:
+        print("Keyword matching failed. Trying FLock LLM routing (open-source model)...")
+        skill, reasoning = detect_skill_with_flock(args.input)
+        method = "flock-llm"
+        if skill:
+            print(f"FLock routed to: {skill} — {reasoning}")
+        else:
+            print(f"FLock routing: {reasoning}")
+
+    # Auto-fallback: even in keyword mode, try FLock if available
+    if not skill and args.provider == "keyword" and args.input:
+        skill_flock, reasoning = detect_skill_with_flock(args.input)
+        if skill_flock:
+            print(f"Keyword matching failed. FLock fallback routed to: {skill_flock} — {reasoning}")
+            skill = skill_flock
+            method = "flock-llm-fallback"
 
     if not skill:
         print(f"Could not determine skill for input: {args.input}")
