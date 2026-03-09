@@ -100,7 +100,7 @@ def _build_human_like_input(path: Path) -> None:
             labels.append(f"truth_{idx}")
 
     obs = pd.DataFrame(
-        {"truth_label": labels},
+        {"truth_label": np.asarray(labels, dtype=object)},
         index=pd.Index([f"cell_{i}" for i in range(len(rows))], dtype="object"),
     )
     var = pd.DataFrame(index=pd.Index(genes, dtype="object"))
@@ -817,6 +817,8 @@ def test_annotation_missing_local_model_fails_actionably(tmp_path: Path):
             str(output_dir),
             "--annotate",
             "celltypist",
+            "--annotation-model",
+            "DefinitelyMissingModel",
         ]
     )
     assert result.returncode != 0
