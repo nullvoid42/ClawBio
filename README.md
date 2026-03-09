@@ -20,6 +20,12 @@
 
 ---
 
+<p align="center">
+  <img src="img/clawbio-demo.gif" alt="ClawBio GWAS Lookup demo — querying 9 genomic databases from the terminal" width="700">
+</p>
+
+---
+
 ## What ClawBio Does Today
 
 **15 skills + 8,000 Galaxy tools. Local-first. No cloud. No guessing.**
