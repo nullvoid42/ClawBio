@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -309,6 +310,7 @@ def resolve_10x_mtx_source(path: Path) -> dict[str, Any]:
                 f"and `barcodes.tsv.gz` files. Missing: {', '.join(missing)}"
             )
         input_files = [matrix_path, barcodes_path, features_path]
+        feature_table_path = features_path
     else:
         prefix = matrix_path.name[: -len("matrix.mtx")]
         compressed = False
@@ -336,6 +338,9 @@ def resolve_10x_mtx_source(path: Path) -> dict[str, Any]:
         "files": input_files,
         "compressed": compressed,
         "prefix": prefix,
+        "matrix_path": matrix_path,
+        "barcodes_path": barcodes_path,
+        "feature_table_path": feature_table_path,
     }
 
 
@@ -381,6 +386,60 @@ def compute_input_checksum(input_source: dict[str, Any] | None) -> str:
     return digest.hexdigest()
 
 
+def load_10x_mtx_data(source_info: dict[str, Any]):
+    """Load 10x Matrix Market input without depending on Scanpy's reader signature."""
+    from anndata import AnnData  # type: ignore
+    from scipy import sparse  # type: ignore
+    from scipy.io import mmread  # type: ignore
+
+    matrix_path = Path(source_info["matrix_path"])
+    barcodes_path = Path(source_info["barcodes_path"])
+    feature_table_path = Path(source_info["feature_table_path"])
+
+    if matrix_path.suffix == ".gz":
+        with gzip.open(matrix_path, "rb") as handle:
+            matrix = mmread(handle)
+    else:
+        matrix = mmread(str(matrix_path))
+
+    if sparse.issparse(matrix):
+        x = matrix.T.tocsr()
+    else:
+        x = np.asarray(matrix).T
+
+    barcodes = pd.read_csv(
+        barcodes_path,
+        header=None,
+        sep="\t",
+        compression="infer",
+    )
+    features = pd.read_csv(
+        feature_table_path,
+        header=None,
+        sep="\t",
+        compression="infer",
+    )
+
+    if features.shape[1] < 2:
+        raise ValueError(
+            "10x feature table must contain at least gene ID and gene symbol columns."
+        )
+
+    obs_names = pd.Index(barcodes.iloc[:, 0].astype(str), dtype="object")
+    obs_names.name = None
+    var_names = pd.Index(features.iloc[:, 1].astype(str), dtype="object")
+    var_names.name = None
+    obs = pd.DataFrame(index=obs_names)
+    var = pd.DataFrame(index=var_names)
+    var["gene_ids"] = features.iloc[:, 0].astype(str).to_numpy()
+    if features.shape[1] >= 3:
+        var["feature_types"] = features.iloc[:, 2].astype(str).to_numpy()
+
+    adata = AnnData(X=x, obs=obs, var=var)
+    adata.var_names_make_unique()
+    return adata
+
+
 def load_data(input_path: str | None, demo: bool, random_state: int):
     """Load AnnData from supported inputs or build demo data."""
     sc = _import_scanpy()
@@ -397,13 +456,7 @@ def load_data(input_path: str | None, demo: bool, random_state: int):
     if source_info["format"] == "h5ad":
         adata = sc.read_h5ad(path)
     else:
-        adata = sc.read_10x_mtx(
-            source_info["reader_path"],
-            var_names="gene_symbols",
-            make_unique=True,
-            prefix=source_info["prefix"] or None,
-            compressed=bool(source_info["compressed"]),
-        )
+        adata = load_10x_mtx_data(source_info)
     processed_reason = detect_processed_input_reason(adata)
     if processed_reason:
         raise ValueError(processed_reason)
