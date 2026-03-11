@@ -1,6 +1,6 @@
 # RoboTerri ClawBio Bot
 
-A Telegram bot that runs ClawBio bioinformatics skills using any LLM as the reasoning engine. Send genetic data, medication photos, or natural language questions -- get personalised genomic reports back.
+A Telegram and Discord bot that runs ClawBio bioinformatics skills using any LLM as the reasoning engine. Send genetic data, medication photos, or natural language questions -- get personalised genomic reports back.
 
 ## Features
 
@@ -13,7 +13,7 @@ A Telegram bot that runs ClawBio bioinformatics skills using any LLM as the reas
 ## Prerequisites
 
 - Python 3.11+
-- A Telegram account
+- A Telegram or Discord account
 - An API key from any OpenAI-compatible LLM provider
 - ClawBio cloned and working (`python3 clawbio.py run pharmgx --demo`)
 
@@ -25,13 +25,13 @@ A Telegram bot that runs ClawBio bioinformatics skills using any LLM as the reas
 pip3 install -r bot/requirements.txt
 ```
 
-### 2. Create a Telegram bot
+### 2a. Create a Telegram bot
 
 1. Open Telegram and search for **@BotFather**
 2. Send `/newbot`, choose a name and username
 3. Save the **bot token** BotFather gives you
 
-### 3. Get your admin chat ID (optional)
+### 3a. Get your Telegram chat ID (optional)
 
 The bot is open to all users by default. To identify yourself as admin (bypasses rate limits):
 
@@ -40,12 +40,34 @@ The bot is open to all users by default. To identify yourself as admin (bypasses
 3. Visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
 4. Find `"chat":{"id":123456789}` -- that number is your chat ID
 
+### 2b. Create a Discord bot
+
+1. Go to **discord.com/developers/applications** and click **New Application**
+2. Go to the **Bot** tab, click **Reset Token**, and save the **bot token**
+3. Under **Privileged Gateway Intents**, enable **Message Content Intent**
+4. Go to **OAuth2 > URL Generator**, select the `bot` scope
+5. Under **Bot Permissions**, select: Send Messages, Attach Files, Read Message History
+6. Copy the generated URL and open it to invite the bot to your server
+
+### 3b. Get your Discord channel ID
+
+1. In Discord, go to **User Settings > Advanced** and enable **Developer Mode**
+2. Right-click the channel you want the bot to respond in
+3. Click **Copy Channel ID**
+
 ### 4. Configure environment
 
 Create a `.env` file in the ClawBio root directory:
 
 ```
+# --- For Telegram ---
 TELEGRAM_BOT_TOKEN=your-bot-token-here
+
+# --- For Discord ---
+DISCORD_BOT_TOKEN=your-discord-bot-token-here
+DISCORD_CHANNEL_ID=your-channel-id-here
+
+# --- LLM (shared by both) ---
 LLM_API_KEY=your-api-key-here
 CLAWBIO_MODEL=gemini-2.0-flash
 
@@ -104,10 +126,20 @@ CLAWBIO_MODEL=local-model
 ### 5. Run
 
 ```bash
+# Telegram bot
 python3 bot/roboterri.py
+
+# Discord bot
+python3 bot/roboterri_discord.py
+
+# Both at the same time (separate terminals)
+python3 bot/roboterri.py &
+python3 bot/roboterri_discord.py &
 ```
 
 ## Commands
+
+### Telegram
 
 | Command | Description |
 |---|---|
@@ -115,12 +147,20 @@ python3 bot/roboterri.py
 | `/skills` | List all available ClawBio skills |
 | `/demo <skill>` | Run a skill with demo data (e.g. `/demo pharmgx`) |
 
+### Discord
+
+| Command | Description |
+|---|---|
+| `!start` | Show welcome message and available commands |
+| `!skills` | List all available ClawBio skills |
+| `!demo <skill>` | Run a skill with demo data (e.g. `!demo pharmgx`) |
+
 ## Usage
 
 - **Text**: Ask any bioinformatics question -- the LLM routes to the right skill
 - **File upload**: Send a 23andMe .txt, AncestryDNA .csv, or VCF file for analysis
 - **Photo**: Send a photo of medication packaging for personalised drug guidance
-- **Demo**: Type `/demo pharmgx` to see a pharmacogenomics report with synthetic data
+- **Demo**: Type `/demo pharmgx` (Telegram) or `!demo pharmgx` (Discord) to see a pharmacogenomics report with synthetic data
 
 ### Zero-cost setup (recommended for public bots)
 
