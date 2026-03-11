@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -43,6 +44,10 @@ DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 CLAWBIO_MODEL = os.environ.get("CLAWBIO_MODEL", "gpt-4o")
+ADMIN_USER_ID = int(os.environ.get("DISCORD_ADMIN_USER_ID", "0") or "0")
+
+# Rate limiting: messages per user per hour (0 = unlimited)
+RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "10"))
 
 CHANNELS_FILE = Path(__file__).resolve().parent / ".channels.json"
 
@@ -93,12 +98,87 @@ CLAWBIO_DIR = Path(__file__).resolve().parent.parent
 CLAWBIO_PY = CLAWBIO_DIR / "clawbio.py"
 SOUL_MD = CLAWBIO_DIR / "SOUL.md"
 OUTPUT_DIR = CLAWBIO_DIR / "output"
+DATA_DIR = CLAWBIO_DIR / "data"
+
+# Owner's genome — used as default when admin asks about their own PGx/nutrition/risk
+OWNER_GENOME = CLAWBIO_DIR / "skills" / "genome-compare" / "data" / "manuel_corpas_23andme.txt.gz"
+
+# Security limits
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_PHOTO_BYTES = 20 * 1024 * 1024   # 20 MB
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 logger = logging.getLogger("roboterri-discord")
+
+
+# ---------------------------------------------------------------------------
+# Redact bot token from log output
+# ---------------------------------------------------------------------------
+class _TokenRedactFilter(logging.Filter):
+    def __init__(self, token: str):
+        super().__init__()
+        self._token = token
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if self._token and self._token in record.getMessage():
+            record.msg = str(record.msg).replace(self._token, "[REDACTED]")
+            if isinstance(record.args, tuple):
+                record.args = tuple(
+                    str(a).replace(self._token, "[REDACTED]")
+                    for a in record.args
+                )
+            elif isinstance(record.args, dict):
+                record.args = {
+                    k: str(v).replace(self._token, "[REDACTED]")
+                    for k, v in record.args.items()
+                }
+        return True
+
+
+if DISCORD_BOT_TOKEN:
+    _redact = _TokenRedactFilter(DISCORD_BOT_TOKEN)
+    for _ln in ("discord", "discord.http", "discord.gateway"):
+        logging.getLogger(_ln).addFilter(_redact)
+
+
+# ---------------------------------------------------------------------------
+# Structured audit log (JSONL)
+# ---------------------------------------------------------------------------
+_AUDIT_LOG_DIR = CLAWBIO_DIR / "bot" / "logs"
+_AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_AUDIT_LOG_PATH = _AUDIT_LOG_DIR / "audit_discord.jsonl"
+
+
+def _audit(event: str, **kwargs):
+    """Append a structured JSON event to the audit log."""
+    from datetime import timezone as _tz
+    entry = {"ts": datetime.now(_tz.utc).isoformat(), "event": event, **kwargs}
+    try:
+        with open(_AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except OSError:
+        pass
+
+
+def _user_ctx(message: discord.Message) -> dict:
+    """Extract user identity for audit logging."""
+    return {
+        "user_id": message.author.id,
+        "username": str(message.author),
+        "display_name": message.author.display_name,
+        "channel_id": message.channel.id,
+        "channel_name": getattr(message.channel, "name", "DM"),
+        "is_admin": is_admin(message),
+    }
+
+
+def is_admin(message: discord.Message) -> bool:
+    """Check if the message is from the admin user."""
+    return bool(ADMIN_USER_ID) and message.author.id == ADMIN_USER_ID
+
 
 # --------------------------------------------------------------------------- #
 # System prompt
@@ -118,8 +198,9 @@ ROLE_GUARDRAILS = """
 Operational constraints:
 1. You are a bioinformatics assistant powered by ClawBio skills.
 2. Keep outputs concise, evidence-led, and explicit about confidence and gaps.
-3. When the user sends a genetic data file (23andMe .txt, AncestryDNA .csv, VCF, FASTQ) or asks about pharmacogenomics, nutrigenomics, equity scoring, metagenomics, or genome comparison, use the clawbio tool. For quick demos say "run pharmgx demo", "run compare demo" etc. Reports and figures are sent automatically after your summary.
+3. When the user sends a genetic data file (23andMe .txt, AncestryDNA .csv, VCF, FASTQ) or asks about pharmacogenomics, nutrigenomics, equity scoring, metagenomics, or genome comparison, use the clawbio tool. When the user asks about disease risk, polygenic risk scores, or "what am I at risk for", use skill='prs'. For a unified profile report use skill='profile'. For gene-drug database lookups use skill='clinpgx'. For variant lookups (rsID, "look up rs...") use skill='gwas'. For quick demos say "run pharmgx demo", "run prs demo", "run profile demo" etc. Reports and figures are sent automatically after your summary.
 4. TOOL OUTPUT RELAY (STRICT): When the clawbio tool returns results, relay the output VERBATIM. Do not paraphrase, summarise, or rewrite tool results. Tool outputs contain precise data (IBS scores, percentages, gene-drug interactions) that must not be altered. You may add a brief intro line before the verbatim output but never replace or condense it.
+5. OWNER GENOME: The bot owner (admin) has their genome pre-loaded. When the admin asks about "my pharmacogenomics", "my risk", "my nutrition", "my genome", or similar personal queries WITHOUT uploading a file, use mode='file' — the system will automatically use the owner's genome. Do NOT ask the admin to upload a file. Only ask non-admin users to upload files.
 """
 
 SYSTEM_PROMPT = f"{_soul}\n\n{ROLE_GUARDRAILS}"
@@ -145,6 +226,9 @@ _pending_media: dict[int, list[dict]] = {}
 # Pending text queue: bypass LLM paraphrasing for compare/drugphoto
 _pending_text: list[str] = []
 
+# Per-user voice reply toggle: user_id -> bool
+_voice_enabled: dict[int, bool] = {}
+
 BOT_START_TIME = time.time()
 
 # --------------------------------------------------------------------------- #
@@ -164,7 +248,11 @@ TOOLS = [
                 "metagenomics (metagenomic profiling from FASTQ), "
                 "compare (genome comparison: IBS vs George Church + ancestry estimation), "
                 "drugphoto (identify a drug from a photo and get personalised dosage guidance "
-                "using demo genotype data -- always use mode='demo'). "
+                "using demo genotype data -- always use mode='demo'), "
+                "prs (polygenic risk scores from GWAS -- disease risk: T2D, atrial fibrillation, CAD, etc.), "
+                "clinpgx (gene-drug interaction database lookup via PharmGKB/CPIC), "
+                "gwas (federated variant lookup across 9 genomic databases by rsID), "
+                "profile (unified genomic profile report combining all skill results). "
                 "Use mode='demo' to run with built-in demo data. "
                 "Use mode='file' when the user has sent a genetic data file. "
                 "Use skill='auto' to let the orchestrator detect the right skill. "
@@ -178,7 +266,8 @@ TOOLS = [
                     "skill": {
                         "type": "string",
                         "enum": ["pharmgx", "equity", "nutrigx", "metagenomics",
-                                 "compare", "drugphoto", "auto"],
+                                 "compare", "drugphoto", "prs", "clinpgx",
+                                 "gwas", "profile", "auto"],
                         "description": (
                             "Which bioinformatics skill to run. Use 'auto' to let "
                             "the orchestrator detect from the file type or query."
@@ -221,15 +310,178 @@ TOOLS = [
                             "Optional -- enriches the recommendation."
                         ),
                     },
+                    "trait": {
+                        "type": "string",
+                        "description": (
+                            "Disease/trait to assess risk for (e.g. 'type 2 diabetes', "
+                            "'atrial fibrillation'). Used with prs skill."
+                        ),
+                    },
+                    "gene": {
+                        "type": "string",
+                        "description": (
+                            "Gene symbol for clinpgx lookup (e.g. 'CYP2D6'). "
+                            "Used with clinpgx skill."
+                        ),
+                    },
+                    "rsid": {
+                        "type": "string",
+                        "description": (
+                            "rsID for GWAS variant lookup (e.g. 'rs3798220'). "
+                            "Used with gwas skill."
+                        ),
+                    },
                 },
                 "required": ["skill", "mode"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_file",
+            "description": (
+                "Save a file that was sent via Discord to a specific folder. "
+                "The file is temporarily stored after download; use this tool to "
+                "move it to the requested destination. Only works for the most "
+                "recently received file. Default: saves to ClawBio data/ directory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "destination_folder": {
+                        "type": "string",
+                        "description": (
+                            "The folder path to save the file in (absolute path). "
+                            "Default: ClawBio data/ directory."
+                        ),
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": (
+                            "Optional filename to save as. If not provided, uses "
+                            "the original filename from Discord."
+                        ),
+                    },
+                },
+                "required": ["destination_folder"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": (
+                "Create or overwrite a file on the filesystem with the given content. "
+                "Use this to write reports, markdown documents, text files, etc. "
+                "Default destination: ClawBio data/ directory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full text content to write to the file.",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename including extension (e.g. 'report.md', 'notes.txt').",
+                    },
+                    "destination_folder": {
+                        "type": "string",
+                        "description": (
+                            "Folder path (absolute). Default: ClawBio data/ directory."
+                        ),
+                    },
+                },
+                "required": ["content", "filename"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_audio",
+            "description": (
+                "Generate an MP3 audio file from text using edge-tts (Microsoft Edge "
+                "text-to-speech). Good for converting reports into accessible audio. "
+                "Available voices: en-GB-RyanNeural (British male, default), "
+                "en-GB-SoniaNeural (British female), en-US-GuyNeural (American male). "
+                "Typical speed: ~150 words/minute."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The text to convert to speech.",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Output MP3 filename (e.g. 'report-audio.mp3').",
+                    },
+                    "voice": {
+                        "type": "string",
+                        "description": "TTS voice. Default: 'en-GB-RyanNeural'.",
+                    },
+                    "rate": {
+                        "type": "string",
+                        "description": "Speech rate adjustment (e.g. '-5%', '+10%'). Default: '-5%'.",
+                    },
+                    "destination_folder": {
+                        "type": "string",
+                        "description": "Folder to save the MP3 (absolute path). Default: ClawBio data/.",
+                    },
+                },
+                "required": ["text", "filename"],
             },
         },
     },
 ]
 
 # --------------------------------------------------------------------------- #
-# execute_clawbio (identical to Telegram version)
+# Security helpers
+# --------------------------------------------------------------------------- #
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Strip path traversal components and dangerous characters from a filename."""
+    filename = Path(filename).name
+    filename = re.sub(r"[\x00-\x1f]", "", filename)
+    filename = filename.replace("..", "").replace("/", "").replace("\\", "")
+    if not filename:
+        filename = "unnamed_file"
+    return filename
+
+
+def _resolve_dest(folder: str | None) -> Path:
+    """Resolve a destination folder, restricted to CLAWBIO_DIR."""
+    dest = Path(folder) if folder else DATA_DIR
+    if not dest.is_absolute():
+        dest = CLAWBIO_DIR / dest
+    try:
+        dest.resolve().relative_to(CLAWBIO_DIR.resolve())
+    except ValueError:
+        logger.warning(f"Path escape blocked: {dest}")
+        _audit("security", severity="HIGH", detail="path_escape_blocked",
+               attempted_path=str(dest), function="_resolve_dest")
+        dest = DATA_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def _validate_path(filepath: Path, allowed_root: Path) -> bool:
+    """Ensure filepath is under allowed_root (path traversal defense)."""
+    try:
+        filepath.resolve().relative_to(allowed_root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# execute_clawbio
 # --------------------------------------------------------------------------- #
 
 
@@ -272,6 +524,10 @@ async def execute_clawbio(args: dict) -> str:
                 "nutrigx_advisor": "nutrigx",
                 "claw-metagenomics": "metagenomics",
                 "genome-compare": "compare",
+                "gwas-prs": "prs",
+                "clinpgx": "clinpgx",
+                "gwas-lookup": "gwas",
+                "profile-report": "profile",
             }
             skill_key = orch_to_key.get(detected, "")
             if not skill_key:
@@ -288,13 +544,20 @@ async def execute_clawbio(args: dict) -> str:
         except Exception as e:
             return f"Error running orchestrator: {e}"
 
-    # Resolve input for file mode
+    # Resolve input and profile for file mode
     input_path = None
-    if mode == "file":
-        for _cid, info in _received_files.items():
-            input_path = info["path"]
-            break
-        if not input_path:
+    profile_path = None
+    for _cid, info in _received_files.items():
+        input_path = info.get("path")
+        profile_path = info.get("profile_path")
+        break
+
+    if mode == "file" and not input_path and not profile_path:
+        # Fall back to owner's genome for admin users
+        if OWNER_GENOME.exists():
+            input_path = str(OWNER_GENOME)
+            logger.info(f"No file uploaded — using owner genome: {OWNER_GENOME.name}")
+        else:
             return "Error: no file received. Send a genetic data file first, then run the skill."
 
     # Build output directory
@@ -303,7 +566,44 @@ async def execute_clawbio(args: dict) -> str:
 
     # Build command
     cmd = [sys.executable, str(CLAWBIO_PY), "run", skill_key]
-    if mode == "demo":
+
+    # Profile-based skills: prefer --profile over --input
+    if skill_key == "profile":
+        if mode == "demo":
+            cmd.append("--demo")
+        elif profile_path:
+            cmd.extend(["--profile", profile_path])
+        else:
+            return "Error: no profile available. Send a genetic data file first to create a profile."
+    elif skill_key == "prs":
+        if mode == "demo":
+            cmd.append("--demo")
+        elif profile_path:
+            cmd.extend(["--profile", profile_path])
+        elif input_path:
+            cmd.extend(["--input", str(input_path)])
+        trait = args.get("trait", "")
+        if trait:
+            cmd.extend(["--trait", trait])
+    elif skill_key == "clinpgx":
+        if mode == "demo":
+            cmd.append("--demo")
+        else:
+            gene = args.get("gene", "")
+            if gene:
+                cmd.extend(["--gene", gene])
+            else:
+                cmd.append("--demo")
+    elif skill_key == "gwas":
+        if mode == "demo":
+            cmd.append("--demo")
+        else:
+            rsid = args.get("rsid", "")
+            if rsid:
+                cmd.extend(["--rsid", rsid])
+            else:
+                cmd.append("--demo")
+    elif mode == "demo":
         cmd.append("--demo")
     elif input_path:
         cmd.extend(["--input", str(input_path)])
@@ -342,8 +642,8 @@ async def execute_clawbio(args: dict) -> str:
         err = stderr_str[-1500:] if stderr_str else stdout_str[-1500:] if stdout_str else "unknown error"
         return f"{skill_key} failed (exit {proc.returncode}):\n{err}"
 
-    # For compare / drugphoto: send stdout directly (bypass LLM paraphrasing)
-    if skill_key in ("compare", "drugphoto"):
+    # For compare / drugphoto / profile: send stdout directly (bypass LLM paraphrasing)
+    if skill_key in ("compare", "drugphoto", "profile"):
         raw_output = stdout_str.strip()
         if raw_output:
             _pending_text.append(raw_output)
@@ -377,7 +677,7 @@ async def execute_clawbio(args: dict) -> str:
     if not report_text:
         return stdout_str if stdout_str else f"{skill_key} completed. Output: {out_dir}"
 
-    # Extract key sections (drop chromosome table, methods, reproducibility, disclaimer)
+    # Trim verbose sections for readability but ALWAYS keep disclaimer.
     keep_lines = []
     skip = False
     for line in report_text.split("\n"):
@@ -389,10 +689,10 @@ async def execute_clawbio(args: dict) -> str:
             skip = True
         elif line.startswith("## About"):
             skip = False
-        elif line.startswith("## Disclaimer"):
-            skip = True
         elif line.startswith("## Reproducibility"):
             skip = True
+        elif line.startswith("## Disclaimer"):
+            skip = False  # always show disclaimer
         if line.startswith("!["):
             continue
         if not skip:
@@ -402,11 +702,155 @@ async def execute_clawbio(args: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# execute_save_file
+# --------------------------------------------------------------------------- #
+
+
+async def execute_save_file(args: dict) -> str:
+    """Save the most recently received file to the requested destination."""
+    file_info = None
+    for _cid, info in _received_files.items():
+        file_info = info
+        break
+
+    if not file_info:
+        return "No recently received file to save. Send a file first."
+
+    src_path = Path(file_info["path"])
+    if not src_path.exists():
+        return "The temporary file has expired. Please send it again."
+
+    dest_path = _resolve_dest(args.get("destination_folder"))
+    filename = _sanitize_filename(args.get("filename") or file_info["filename"])
+    final_path = dest_path / filename
+
+    if not _validate_path(final_path, dest_path):
+        return f"Error: filename '{filename}' would escape the destination directory."
+
+    shutil.copy2(str(src_path), str(final_path))
+    logger.info(f"Saved file: {final_path}")
+
+    try:
+        src_path.unlink()
+    except OSError:
+        pass
+
+    return f"File saved to {final_path}"
+
+
+# --------------------------------------------------------------------------- #
+# execute_write_file
+# --------------------------------------------------------------------------- #
+
+
+async def execute_write_file(args: dict) -> str:
+    """Create or overwrite a file with the given content."""
+    content = args.get("content")
+    filename = args.get("filename")
+    if not content:
+        return "Error: 'content' is required. Provide the full text to write."
+    if not filename:
+        return "Error: 'filename' is required (e.g. 'report.md')."
+
+    dest = _resolve_dest(args.get("destination_folder"))
+    filename = _sanitize_filename(filename)
+    filepath = dest / filename
+
+    if not _validate_path(filepath, dest):
+        return f"Error: filename '{filename}' would escape the destination directory."
+
+    filepath.write_text(content, encoding="utf-8")
+    logger.info(f"Wrote file: {filepath} ({len(content)} chars)")
+    return f"File written to {filepath} ({len(content)} chars)"
+
+
+# --------------------------------------------------------------------------- #
+# execute_generate_audio
+# --------------------------------------------------------------------------- #
+
+
+async def execute_generate_audio(args: dict) -> str:
+    """Generate MP3 audio from text using edge-tts."""
+    text = args.get("text")
+    filename = args.get("filename")
+    if not text:
+        return "Error: 'text' is required. Provide the text to convert to speech."
+    if not filename:
+        return "Error: 'filename' is required (e.g. 'report.mp3')."
+    if not filename.endswith(".mp3"):
+        filename += ".mp3"
+
+    filename = _sanitize_filename(filename)
+    voice = args.get("voice", "en-GB-RyanNeural")
+    rate = args.get("rate", "-5%")
+    dest = _resolve_dest(args.get("destination_folder"))
+    filepath = dest / filename
+
+    if not _validate_path(filepath, dest):
+        return f"Error: filename '{filename}' would escape the destination directory."
+
+    # Write text to temp file for edge-tts
+    text_path = dest / f".tmp_{filename}.txt"
+    text_path.write_text(text, encoding="utf-8")
+
+    edge_tts_bin = Path.home() / "Library" / "Python" / "3.9" / "bin" / "edge-tts"
+    if not edge_tts_bin.exists():
+        edge_tts_bin = "edge-tts"
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(edge_tts_bin),
+            "--voice", voice,
+            f"--rate={rate}",
+            "--file", str(text_path),
+            "--write-media", str(filepath),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+
+        try:
+            text_path.unlink()
+        except OSError:
+            pass
+
+        if proc.returncode != 0:
+            err = stderr.decode()[-300:] if stderr else "unknown error"
+            return f"Audio generation failed (exit {proc.returncode}): {err}"
+
+        size_mb = filepath.stat().st_size / (1024 * 1024)
+        word_count = len(text.split())
+        est_minutes = word_count / 150
+
+        logger.info(f"Generated audio: {filepath} ({size_mb:.1f} MB, ~{est_minutes:.0f} min)")
+        return (
+            f"Audio saved to {filepath} ({size_mb:.1f} MB, "
+            f"~{word_count} words, ~{est_minutes:.0f} min estimated)"
+        )
+
+    except asyncio.TimeoutError:
+        try:
+            text_path.unlink()
+        except OSError:
+            pass
+        return "Audio generation timed out after 5 minutes."
+    except FileNotFoundError:
+        try:
+            text_path.unlink()
+        except OSError:
+            pass
+        return "edge-tts not found. Install with: pip3 install edge-tts"
+
+
+# --------------------------------------------------------------------------- #
 # LLM tool loop (OpenAI-compatible chat completions + function calling)
 # --------------------------------------------------------------------------- #
 
 TOOL_EXECUTORS = {
     "clawbio": execute_clawbio,
+    "save_file": execute_save_file,
+    "write_file": execute_write_file,
+    "generate_audio": execute_generate_audio,
 }
 
 MAX_TOOL_ITERATIONS = 10
@@ -442,6 +886,23 @@ async def llm_tool_loop(channel_id: int, user_content: str | list) -> str:
 
     if len(history) > MAX_HISTORY:
         history[:] = history[-MAX_HISTORY:]
+
+    # Sanitise: strip orphaned tool messages that lack a preceding
+    # assistant message with tool_calls (prevents API 400 errors).
+    sanitised: list[dict] = []
+    for msg in history:
+        if msg.get("role") == "tool":
+            # Only keep if previous message is assistant with tool_calls
+            if sanitised and sanitised[-1].get("role") == "assistant":
+                if sanitised[-1].get("tool_calls"):
+                    sanitised.append(msg)
+                    continue
+            logger.warning("Dropped orphaned tool message from history")
+            _audit("history_sanitised", channel_id=channel_id,
+                   detail="orphaned_tool_message_dropped")
+            continue
+        sanitised.append(msg)
+    history[:] = sanitised
 
     last_message = None
     for _iteration in range(MAX_TOOL_ITERATIONS):
@@ -489,10 +950,14 @@ async def llm_tool_loop(channel_id: int, user_content: str | list) -> str:
                 except json.JSONDecodeError:
                     args = {}
                 logger.info(f"Tool call: {func_name}({json.dumps(args)[:200]})")
+                _audit("tool_call", channel_id=channel_id, tool=func_name,
+                       args_preview=json.dumps(args, default=str)[:300])
                 try:
                     result = await executor(args)
                 except Exception as tool_err:
                     logger.error(f"Tool {func_name} raised: {tool_err}", exc_info=True)
+                    _audit("tool_error", channel_id=channel_id, tool=func_name,
+                           error=str(tool_err)[:300])
                     result = f"Error executing {func_name}: {type(tool_err).__name__}: {tool_err}"
             else:
                 result = f"Unknown tool: {func_name}"
@@ -504,6 +969,28 @@ async def llm_tool_loop(channel_id: int, user_content: str | list) -> str:
             })
 
     return last_message.content if last_message and last_message.content else "(max tool iterations reached)"
+
+
+# --------------------------------------------------------------------------- #
+# Rate limiting
+# --------------------------------------------------------------------------- #
+
+_rate_buckets: dict[int, list[float]] = {}
+
+
+def _check_rate_limit(message: discord.Message) -> bool:
+    """Return True if the user is within rate limits (or is admin)."""
+    if RATE_LIMIT_PER_HOUR <= 0 or is_admin(message):
+        return True
+    uid = message.author.id
+    now = time.time()
+    window = 3600  # 1 hour
+    bucket = _rate_buckets.setdefault(uid, [])
+    bucket[:] = [t for t in bucket if now - t < window]
+    if len(bucket) >= RATE_LIMIT_PER_HOUR:
+        return False
+    bucket.append(now)
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -586,6 +1073,57 @@ async def drain_pending_media(channel: discord.abc.Messageable) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Voice reply helper
+# --------------------------------------------------------------------------- #
+
+
+async def _send_voice_reply(channel: discord.abc.Messageable, text: str) -> bool:
+    """Convert text to MP3 voice message and send via Discord.
+
+    Uses macOS say (Daniel voice) -> ffmpeg -> MP3.
+    Returns True if voice was sent, False on failure.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        text_file = os.path.join(tmpdir, "reply.txt")
+        aiff_file = os.path.join(tmpdir, "reply.aiff")
+        mp3_file = os.path.join(tmpdir, "reply.mp3")
+
+        with open(text_file, "w", encoding="utf-8") as f:
+            f.write(text)
+
+        # Generate speech with macOS say (Daniel = British male)
+        proc = await asyncio.create_subprocess_exec(
+            "say", "-v", "Daniel", "-r", "170",
+            "-f", text_file, "-o", aiff_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        if proc.returncode != 0:
+            logger.warning("say command failed for voice reply")
+            return False
+
+        # Convert to MP3 (Discord-friendly format)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", aiff_file,
+            "-codec:a", "libmp3lame", "-b:a", "128k",
+            mp3_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        if proc.returncode != 0:
+            logger.warning("ffmpeg MP3 conversion failed for voice reply")
+            return False
+
+        await channel.send(
+            file=discord.File(mp3_file, filename="voice_reply.mp3"),
+        )
+
+    return True
+
+
+# --------------------------------------------------------------------------- #
 # Discord client
 # --------------------------------------------------------------------------- #
 
@@ -599,8 +1137,12 @@ async def on_ready():
     logger.info(f"Logged in as {client.user} (id: {client.user.id})")
     logger.info(f"Authorised channels: {[ch['name'] for ch in CHANNELS]} ({len(CHANNELS)})")
     logger.info(f"LLM model: {CLAWBIO_MODEL}")
+    logger.info(f"Admin user ID: {ADMIN_USER_ID or 'not set (public mode)'}")
+    logger.info(f"Rate limit: {RATE_LIMIT_PER_HOUR} msgs/hour per user (0=unlimited)")
     if LLM_BASE_URL:
         logger.info(f"LLM base URL: {LLM_BASE_URL}")
+    _audit("bot_start", model=CLAWBIO_MODEL,
+           admin_user=ADMIN_USER_ID, rate_limit=RATE_LIMIT_PER_HOUR)
     print(f"RoboTerri Discord bot is running as {client.user}. Press Ctrl+C to stop.")
 
 
@@ -614,7 +1156,7 @@ async def on_message(message: discord.Message):
     if message.channel.id not in AUTHORISED_CHANNEL_IDS:
         return
 
-    # ----- Slash-style commands ----- #
+    # ----- Commands ----- #
 
     content = message.content.strip()
 
@@ -628,13 +1170,20 @@ async def on_message(message: discord.Message):
 
     if content == "!start":
         await message.channel.send(
-            "Hi there! RoboTerri here -- your ClawBio bioinformatics assistant ;-)\n\n"
+            "Welcome to ClawBio -- open-source bioinformatics at your fingertips!\n\n"
+            "I can analyse genetic data, check drug interactions, assess nutritional "
+            "genomics, estimate polygenic risk scores, and more.\n\n"
             "Commands:\n"
-            "  `!skills`  -- list available ClawBio skills\n"
-            "  `!demo <skill>`  -- run a demo (pharmgx, equity, nutrigx, compare)\n\n"
-            "Or just chat -- I can answer bioinformatics questions.\n"
+            "  `!skills`  -- list available bioinformatics skills\n"
+            "  `!demo <skill>`  -- run a demo (pharmgx, equity, nutrigx, compare, prs, profile)\n"
+            "  `!voice`  -- toggle voice replies on/off\n"
+            "  `!status`  -- bot info\n"
+            "  `!health`  -- system health check\n\n"
+            "Or just chat -- ask any bioinformatics question.\n"
             "Attach a genetic data file (.txt, .csv, .vcf) to analyse it.\n"
-            "Attach a photo of a medication for personalised drug guidance."
+            "Attach a photo of a medication for personalised drug guidance.\n\n"
+            "ClawBio is a research tool, not a medical device. "
+            "Consult a healthcare professional before making medical decisions."
         )
         return
 
@@ -653,7 +1202,104 @@ async def on_message(message: discord.Message):
             await message.channel.send(f"Error listing skills: {e}")
         return
 
+    if content == "!voice":
+        uid = message.author.id
+        current = _voice_enabled.get(uid, False)
+        _voice_enabled[uid] = not current
+        state = "ON" if not current else "OFF"
+        await message.channel.send(
+            f"Voice replies toggled {state}.\n"
+            f"{'I will now send voice memos alongside text replies.' if not current else 'Back to text-only replies.'}"
+        )
+        return
+
+    if content == "!status":
+        uptime_secs = int(time.time() - BOT_START_TIME)
+        hours, remainder = divmod(uptime_secs, 3600)
+        minutes, secs = divmod(remainder, 60)
+        uptime_str = f"{hours}h {minutes}m {secs}s"
+
+        skills_dir = CLAWBIO_DIR / "skills"
+        skill_count = sum(
+            1 for d in skills_dir.iterdir()
+            if d.is_dir() and (d / "SKILL.md").exists()
+        ) if skills_dir.exists() else 0
+
+        status_msg = (
+            f"RoboTerri ClawBio Status\n"
+            f"========================\n"
+            f"Bot uptime: {uptime_str}\n"
+            f"LLM model: {CLAWBIO_MODEL}\n"
+            f"Skills available: {skill_count}\n"
+            f"ClawBio dir: {CLAWBIO_DIR}\n"
+        )
+        if LLM_BASE_URL:
+            status_msg += f"LLM endpoint: {LLM_BASE_URL}\n"
+
+        await message.channel.send(status_msg)
+        return
+
+    if content == "!health":
+        checks = []
+
+        # ClawBio CLI
+        if CLAWBIO_PY.exists():
+            checks.append("ClawBio CLI: OK")
+        else:
+            checks.append("ClawBio CLI: MISSING")
+
+        # SOUL.md
+        if SOUL_MD.exists():
+            checks.append(f"SOUL.md: OK ({len(_soul)} chars)")
+        else:
+            checks.append("SOUL.md: MISSING (using fallback)")
+
+        # Skills
+        skills_dir = CLAWBIO_DIR / "skills"
+        if skills_dir.exists():
+            implemented = []
+            stub_only = []
+            for d in sorted(skills_dir.iterdir()):
+                if not d.is_dir() or not (d / "SKILL.md").exists():
+                    continue
+                has_py = any(d.glob("*.py"))
+                if has_py:
+                    implemented.append(d.name)
+                else:
+                    stub_only.append(d.name)
+            checks.append(f"Skills (implemented): {len(implemented)}")
+            checks.append(f"Skills (stub/planned): {len(stub_only)}")
+        else:
+            checks.append("Skills directory: MISSING")
+
+        # Output directory
+        if OUTPUT_DIR.exists():
+            output_count = sum(1 for _ in OUTPUT_DIR.iterdir())
+            checks.append(f"Output runs: {output_count}")
+        else:
+            checks.append("Output directory: not yet created")
+
+        # edge-tts availability
+        edge_tts_bin = Path.home() / "Library" / "Python" / "3.9" / "bin" / "edge-tts"
+        if edge_tts_bin.exists():
+            checks.append("edge-tts: OK")
+        else:
+            checks.append("edge-tts: not found (audio generation unavailable)")
+
+        await message.channel.send(
+            "ClawBio Health Check\n"
+            "====================\n" + "\n".join(checks)
+        )
+        return
+
     if content.startswith("!demo"):
+        if not _check_rate_limit(message):
+            _audit("rate_limited", **_user_ctx(message))
+            await message.channel.send(
+                f"You've reached the limit of {RATE_LIMIT_PER_HOUR} messages per hour. "
+                "Please try again later."
+            )
+            return
         parts = content.split(maxsplit=1)
         skill = parts[1].strip() if len(parts) > 1 else "pharmgx"
         await message.channel.send(f"Running {skill} demo -- this may take a moment...")
@@ -668,6 +1314,12 @@ async def on_message(message: discord.Message):
                     _pending_text.clear()
                 await send_long_message(message.channel, reply)
                 await drain_pending_media(message.channel)
+                # Voice reply if toggled on
+                if _voice_enabled.get(message.author.id):
+                    try:
+                        await _send_voice_reply(message.channel, reply)
+                    except Exception as ve:
+                        logger.warning(f"Voice reply failed: {ve}")
             except Exception as e:
                 logger.error(f"Demo error: {e}", exc_info=True)
                 await message.channel.send(f"Demo failed: {e}")
@@ -683,19 +1335,39 @@ async def on_message(message: discord.Message):
         content_type = attachment.content_type or ""
 
         if content_type.startswith("image/") or ext in IMAGE_EXTENSIONS:
+            if not _check_rate_limit(message):
+                _audit("rate_limited", **_user_ctx(message))
+                await message.channel.send(
+                    f"You've reached the limit of {RATE_LIMIT_PER_HOUR} messages per hour. "
+                    "Please try again later."
+                )
+                return
+
             has_image = True
             # Download image and encode to base64
             img_bytes = await attachment.read()
+
+            # File size check
+            if len(img_bytes) > MAX_PHOTO_BYTES:
+                await message.channel.send(
+                    f"Photo too large ({len(img_bytes) / (1024*1024):.1f} MB). "
+                    f"Maximum: {MAX_PHOTO_BYTES / (1024*1024):.0f} MB."
+                )
+                return
+
             img_b64 = base64.standard_b64encode(img_bytes).decode("ascii")
 
             media_type = content_type if content_type.startswith("image/") else "image/jpeg"
-            logger.info(f"Image received: {attachment.filename} ({len(img_bytes)} bytes, {media_type})")
+            filename = _sanitize_filename(attachment.filename)
+            logger.info(f"Image received: {filename} ({len(img_bytes)} bytes, {media_type})")
+            _audit("photo", **_user_ctx(message), size_bytes=len(img_bytes),
+                   media_type=media_type)
 
             # Store for potential file-based skill use
-            tmp_path = Path(tempfile.gettempdir()) / f"roboterri_{attachment.filename}"
+            tmp_path = Path(tempfile.gettempdir()) / f"roboterri_{filename}"
             tmp_path.write_bytes(img_bytes)
             _received_files[message.channel.id] = {
-                "path": str(tmp_path), "filename": attachment.filename,
+                "path": str(tmp_path), "filename": filename,
             }
 
             caption = message.content.strip() if message.content else ""
@@ -733,6 +1405,12 @@ async def on_message(message: discord.Message):
                         reply = "\n\n".join(_pending_text)
                         _pending_text.clear()
                     await send_long_message(message.channel, reply)
+                    # Voice reply if toggled on
+                    if _voice_enabled.get(message.author.id):
+                        try:
+                            await _send_voice_reply(message.channel, reply)
+                        except Exception as ve:
+                            logger.warning(f"Voice reply failed: {ve}")
                 except Exception as e:
                     logger.error(f"Photo handling error: {e}", exc_info=True)
                     await message.channel.send(
@@ -740,39 +1418,100 @@ async def on_message(message: discord.Message):
                     )
 
         elif ext in GENETIC_EXTENSIONS:
+            if not _check_rate_limit(message):
+                _audit("rate_limited", **_user_ctx(message))
+                await message.channel.send(
+                    f"You've reached the limit of {RATE_LIMIT_PER_HOUR} messages per hour. "
+                    "Please try again later."
+                )
+                return
+
             has_genetic_file = True
             file_bytes = await attachment.read()
-            tmp_path = Path(tempfile.gettempdir()) / f"roboterri_{attachment.filename}"
+
+            # File size check
+            if len(file_bytes) > MAX_UPLOAD_BYTES:
+                await message.channel.send(
+                    f"File too large ({len(file_bytes) / (1024*1024):.1f} MB). "
+                    f"Maximum: {MAX_UPLOAD_BYTES / (1024*1024):.0f} MB."
+                )
+                return
+
+            filename = _sanitize_filename(attachment.filename)
+            tmp_path = Path(tempfile.gettempdir()) / f"roboterri_{filename}"
             tmp_path.write_bytes(file_bytes)
-            logger.info(f"Document received: {attachment.filename} ({len(file_bytes)} bytes)")
+            logger.info(f"Document received: {filename} ({len(file_bytes)} bytes)")
+            _audit("document", **_user_ctx(message), filename=filename,
+                   size_bytes=len(file_bytes))
 
             _received_files[message.channel.id] = {
-                "path": str(tmp_path), "filename": attachment.filename,
+                "path": str(tmp_path), "filename": filename,
             }
 
+            # Auto-create a patient profile for follow-up skill calls
+            profile_path = None
+            try:
+                upload_proc = await asyncio.create_subprocess_exec(
+                    sys.executable, str(CLAWBIO_PY), "upload",
+                    "--input", str(tmp_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                up_stdout, up_stderr = await asyncio.wait_for(
+                    upload_proc.communicate(), timeout=30,
+                )
+                up_out = up_stdout.decode(errors="replace")
+                # Parse profile path from upload output
+                for line in up_out.splitlines():
+                    if "profile" in line.lower() and ("/" in line or "\\" in line):
+                        for token in line.split():
+                            if token.endswith(".json"):
+                                profile_path = token
+                                break
+                if profile_path:
+                    _received_files[message.channel.id]["profile_path"] = profile_path
+                    logger.info(f"Auto-created profile: {profile_path}")
+                else:
+                    logger.info(f"Profile upload output (no path parsed): {up_out[:200]}")
+            except Exception as prof_err:
+                logger.warning(f"Auto-profile creation failed (non-fatal): {prof_err}")
+
             caption = message.content.strip() if message.content else ""
-            parts = [f"[Document received: {attachment.filename} ({len(file_bytes)} bytes)]"]
+            parts_list = [f"[Document received: {filename} ({len(file_bytes)} bytes)]"]
+            if profile_path:
+                parts_list.append(f"[Patient profile auto-created: {profile_path}]")
             if caption:
-                parts.append(caption)
+                parts_list.append(caption)
             else:
-                parts.append(
+                profile_note = (
+                    " A patient profile has been created -- the user can now ask "
+                    "follow-up questions like 'what am I at risk for?' (prs) or "
+                    "'show my full profile' (profile) without re-uploading."
+                ) if profile_path else ""
+                parts_list.append(
                     "The user sent this genetic data file. Detect the file type and "
                     "run the appropriate ClawBio skill using mode='file'. For .txt "
                     "files (23andMe format) use pharmgx. For .csv (AncestryDNA) use "
                     "pharmgx. For .vcf use equity. For .fastq use metagenomics. "
-                    "If unsure, use skill='auto'."
+                    "If unsure, use skill='auto'." + profile_note
                 )
 
             async with message.channel.typing():
                 try:
                     reply = await llm_tool_loop(
-                        message.channel.id, "\n\n".join(parts)
+                        message.channel.id, "\n\n".join(parts_list)
                     )
                     if _pending_text:
                         reply = "\n\n".join(_pending_text)
                         _pending_text.clear()
                     await send_long_message(message.channel, reply)
                     await drain_pending_media(message.channel)
+                    # Voice reply if toggled on
+                    if _voice_enabled.get(message.author.id):
+                        try:
+                            await _send_voice_reply(message.channel, reply)
+                        except Exception as ve:
+                            logger.warning(f"Voice reply failed: {ve}")
                 except Exception as e:
                     logger.error(f"Document handling error: {e}", exc_info=True)
                     await message.channel.send(
@@ -792,8 +1531,18 @@ async def on_message(message: discord.Message):
     if content.startswith("!"):
         return
 
+    if not _check_rate_limit(message):
+        _audit("rate_limited", **_user_ctx(message))
+        await message.channel.send(
+            f"You've reached the limit of {RATE_LIMIT_PER_HOUR} messages per hour. "
+            "Please try again later."
+        )
+        return
+
     user_text = content
     logger.info(f"Message from {message.author.display_name}: {user_text[:100]}")
+    _audit("message", **_user_ctx(message), text_preview=user_text[:200],
+           text_len=len(user_text))
 
     async with message.channel.typing():
         try:
@@ -803,6 +1552,12 @@ async def on_message(message: discord.Message):
                 _pending_text.clear()
             await send_long_message(message.channel, reply)
             await drain_pending_media(message.channel)
+            # Voice reply if toggled on
+            if _voice_enabled.get(message.author.id):
+                try:
+                    await _send_voice_reply(message.channel, reply)
+                except Exception as ve:
+                    logger.warning(f"Voice reply failed: {ve}")
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
             await message.channel.send(
@@ -821,6 +1576,8 @@ def main():
     logger.info(f"ClawBio directory: {CLAWBIO_DIR}")
     if LLM_BASE_URL:
         logger.info(f"LLM base URL: {LLM_BASE_URL}")
+    logger.info(f"Admin user ID: {ADMIN_USER_ID or 'not set (public mode)'}")
+    logger.info(f"Rate limit: {RATE_LIMIT_PER_HOUR} msgs/hour per user (0=unlimited)")
     logger.info(f"Authorised channels: {[ch['name'] for ch in CHANNELS]} ({len(CHANNELS)})")
 
     client.run(DISCORD_BOT_TOKEN, log_handler=None)
