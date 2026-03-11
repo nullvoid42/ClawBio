@@ -611,7 +611,8 @@ async def execute_clawbio(args: dict) -> str:
     if not report_text:
         return stdout_str if stdout_str else f"{skill_key} completed. Output: {out_dir}"
 
-    # Extract key sections (drop chromosome table, methods, reproducibility, disclaimer)
+    # Trim verbose sections for Telegram readability but ALWAYS keep disclaimer.
+    # Full report is preserved on disk at out_dir.
     keep_lines = []
     skip = False
     for line in report_text.split("\n"):
@@ -623,10 +624,10 @@ async def execute_clawbio(args: dict) -> str:
             skip = True
         elif line.startswith("## About"):
             skip = False
-        elif line.startswith("## Disclaimer"):
-            skip = True
         elif line.startswith("## Reproducibility"):
             skip = True
+        elif line.startswith("## Disclaimer"):
+            skip = False  # always show disclaimer
         if line.startswith("!["):
             continue
         if not skip:
