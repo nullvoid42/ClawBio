@@ -97,12 +97,17 @@ class _TokenRedactFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if self._token and self._token in record.getMessage():
-            record.msg = record.msg.replace(self._token, "[REDACTED]")
+            record.msg = str(record.msg).replace(self._token, "[REDACTED]")
             if isinstance(record.args, tuple):
                 record.args = tuple(
-                    str(a).replace(self._token, "[REDACTED]") if isinstance(a, str) else a
+                    str(a).replace(self._token, "[REDACTED]")
                     for a in record.args
                 )
+            elif isinstance(record.args, dict):
+                record.args = {
+                    k: str(v).replace(self._token, "[REDACTED]")
+                    for k, v in record.args.items()
+                }
         return True
 
 
