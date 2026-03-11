@@ -56,6 +56,12 @@ EXTENSION_MAP: dict[str, str] = {
 }
 
 KEYWORD_MAP: dict[str, str] = {
+    "scvi": "scrna-embedding",
+    "batch correction": "scrna-embedding",
+    "batch integration": "scrna-embedding",
+    "integration": "scrna-embedding",
+    "latent": "scrna-embedding",
+    "embedding": "scrna-embedding",
     "diversity": "equity-scorer",
     "equity": "equity-scorer",
     "heim": "equity-scorer",
@@ -229,6 +235,7 @@ SKILL_REGISTRY_MAP: dict[str, str] = {
     "equity-scorer": "equity",
     "nutrigx_advisor": "nutrigx",
     "scrna-orchestrator": "scrna",
+    "scrna-embedding": "scrna-embedding",
     "genome-compare": "compare",
     "gwas-prs": "prs",
     "clinpgx": "clinpgx",
@@ -250,6 +257,8 @@ def detect_multiple_skills(query: str) -> list[str]:
         if keyword in query_lower and skill not in seen:
             matched.append(skill)
             seen.add(skill)
+    if "scrna-embedding" in seen and "scrna-orchestrator" in seen:
+        matched = [skill for skill in matched if skill != "scrna-orchestrator"]
     return matched
 
 

@@ -38,6 +38,7 @@ from clawbio.common.report import (
     generate_report_header,
     write_result_json,
 )
+from clawbio.common.scrna_io import compute_input_checksum, load_count_adata
 
 DISCLAIMER = (
     "ClawBio is a research and educational tool. It is not a medical device "
@@ -451,16 +452,12 @@ def load_data(input_path: str | None, demo: bool, random_state: int):
     if not input_path:
         raise ValueError("Provide --input <input.h5ad|matrix.mtx|10x_dir> or --demo.")
 
-    path = Path(input_path)
-    source_info = resolve_input_source(path)
-    if source_info["format"] == "h5ad":
-        adata = sc.read_h5ad(path)
-    else:
-        adata = load_10x_mtx_data(source_info)
-    processed_reason = detect_processed_input_reason(adata)
-    if processed_reason:
-        raise ValueError(processed_reason)
-    return adata, path, False, None, source_info
+    adata, input_source = load_count_adata(
+        input_path,
+        h5ad_loader=sc.read_h5ad,
+        expected_input="raw-count .h5ad or 10x single-cell input",
+    )
+    return adata, Path(input_path), False, None, input_source
 
 
 def qc_filter(

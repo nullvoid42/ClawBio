@@ -4,7 +4,7 @@ description: Local Scanpy pipeline for single-cell RNA-seq QC, optional doublet 
 version: 0.1.0
 author: Yonghao Zhao
 license: MIT
-tags: [scrna, single-cell, scanpy, clustering, differential-expression, mtx, 10x]
+tags: [scrna, single-cell, scanpy, clustering, differential-expression, h5ad, mtx, 10x]
 metadata:
   openclaw:
     requires:
@@ -107,6 +107,7 @@ python skills/scrna-orchestrator/scrna_orchestrator.py \
 # Direct matrix.mtx(.gz) path
 python skills/scrna-orchestrator/scrna_orchestrator.py \
   --input <matrix.mtx.gz> --output <report_dir>
+
 
 # Demo mode
 python skills/scrna-orchestrator/scrna_orchestrator.py \
@@ -221,6 +222,7 @@ output_directory/
 **Required**:
 - `scanpy` >= 1.10
 - `anndata` >= 0.10
+- `scipy`
 - `numpy`, `pandas`, `matplotlib`, `leidenalg`, `python-igraph`
 
 **Optional**:
@@ -242,11 +244,11 @@ output_directory/
 ## Integration with Bio Orchestrator
 
 **Trigger conditions**:
-- File extension `.h5ad`
+- File extension `.h5ad`, `.mtx`, or `.mtx.gz`
 - User intent includes scRNA terms (single-cell, Scanpy, clustering, marker genes, DE, doublets, annotation)
 
 **Current limitations**:
-- Raw-count `.h5ad` only
+- Raw-count `.h5ad` and 10x Matrix Market only
 - CellTypist support is human-model focused and requires a locally installed model
 - Multi-group pairwise DE, within-cluster DE, and latent-model integration are future work
 
