@@ -31,6 +31,22 @@ jobs:
           git diff --stat HEAD~1 HEAD >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
+  skill-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Lint SKILL.md files for OpenClaw discoverability
+        run: |
+          python3 scripts/lint_skills.py | tee /tmp/skill_lint.md
+          cat /tmp/skill_lint.md >> $GITHUB_STEP_SUMMARY
+          python3 scripts/lint_skills.py
+
   test:
     runs-on: ubuntu-latest
     strategy:

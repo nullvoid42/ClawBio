@@ -174,7 +174,8 @@ Operational constraints:
 2. Keep outputs concise, evidence-led, and explicit about confidence and gaps.
 3. When the user sends a genetic data file (23andMe .txt, AncestryDNA .csv, VCF, FASTQ) or asks about pharmacogenomics, nutrigenomics, equity scoring, metagenomics, or genome comparison, use the clawbio tool. When the user asks about disease risk, polygenic risk scores, or "what am I at risk for", use skill='prs'. For a unified profile report use skill='profile'. For gene-drug database lookups use skill='clinpgx'. For variant lookups (rsID, "look up rs...") use skill='gwas'. For quick demos say "run pharmgx demo", "run prs demo", "run profile demo" etc. Reports and figures are sent automatically after your summary.
 4. TOOL OUTPUT RELAY (STRICT): When the clawbio tool returns results, relay the output VERBATIM. Do not paraphrase, summarise, or rewrite tool results. Tool outputs contain precise data (IBS scores, percentages, gene-drug interactions) that must not be altered. You may add a brief intro line before the verbatim output but never replace or condense it.
-5. OWNER GENOME: The bot owner (admin) has their genome pre-loaded. When the admin asks about "my pharmacogenomics", "my risk", "my nutrition", "my genome", or similar personal queries WITHOUT uploading a file, use mode='file' — the system will automatically use the owner's genome. Do NOT ask the admin to upload a file. Only ask non-admin users to upload files.
+5. OWNER GENOME: The bot owner (admin) has their genome pre-loaded. When the admin asks about "my pharmacogenomics", "my risk", "my nutrition", "my genome", or similar personal queries WITHOUT uploading a file, use mode='file' — the system will automatically use the owner's genome. Do NOT ask the admin to upload a file.
+6. DEMO FALLBACK: When a non-admin user asks about pharmacogenomics, nutrigenomics, risk scores, or any skill that needs genetic data but has NOT uploaded a file, do NOT just ask for a file and stop. Instead, offer to run the demo with built-in synthetic data (mode='demo') so they can see the skill in action. Example: "I can run a demo with synthetic data so you can see what the report looks like — shall I go ahead?" If they agree (or if the request is clearly exploratory), run it immediately.
 """
 
 SYSTEM_PROMPT = f"{_soul}\n\n{ROLE_GUARDRAILS}"
@@ -747,7 +748,7 @@ async def execute_write_file(args: dict) -> str:
 
 
 async def execute_generate_audio(args: dict) -> str:
-    """Generate MP3 audio from text using edge-tts."""
+    """Generate MP3 audio from text using OpenAI TTS API."""
     text = args.get("text")
     filename = args.get("filename")
     if not text:
@@ -758,50 +759,71 @@ async def execute_generate_audio(args: dict) -> str:
         filename += ".mp3"
 
     filename = _sanitize_filename(filename)
-    voice = args.get("voice", "en-US-AvaMultilingualNeural")
-    rate = args.get("rate", "-5%")
+    voice = args.get("voice", "nova")
     dest = _resolve_dest(args.get("destination_folder"))
     filepath = dest / filename
 
     if not _validate_path(filepath, dest):
         return f"Error: filename '{filename}' would escape the destination directory."
 
-    # Write text to temp file for edge-tts
-    text_path = dest / f".tmp_{filename}.txt"
-    text_path.write_text(text, encoding="utf-8")
-
-    edge_tts_bin = shutil.which("edge-tts")
-    if not edge_tts_bin:
-        # Check common macOS user-install locations
-        for pyver in ("3.9", "3.10", "3.11", "3.12", "3.13"):
-            candidate = Path.home() / "Library" / "Python" / pyver / "bin" / "edge-tts"
-            if candidate.exists():
-                edge_tts_bin = str(candidate)
-                break
-
-    if not edge_tts_bin:
-        return "edge-tts not found. Install with: pip3 install edge-tts"
+    # OpenAI TTS has a 4096-char input limit — split if needed
+    MAX_CHUNK = 4096
+    chunks = [text[i:i + MAX_CHUNK] for i in range(0, len(text), MAX_CHUNK)]
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            str(edge_tts_bin),
-            "--voice", voice,
-            f"--rate={rate}",
-            "--file", str(text_path),
-            "--write-media", str(filepath),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        # Use a direct OpenAI client for TTS (not the LLM proxy)
+        tts_client = AsyncOpenAI(api_key=LLM_API_KEY)
 
-        try:
-            text_path.unlink()
-        except OSError:
-            pass
+        if len(chunks) == 1:
+            response = await asyncio.wait_for(
+                tts_client.audio.speech.create(
+                    model="tts-1",
+                    voice=voice,
+                    input=chunks[0],
+                ),
+                timeout=300,
+            )
+            response.stream_to_file(str(filepath))
+        else:
+            # Multiple chunks: generate and concatenate
+            part_files = []
+            for i, chunk in enumerate(chunks):
+                part_path = dest / f".tmp_{filename}_part{i}.mp3"
+                response = await asyncio.wait_for(
+                    tts_client.audio.speech.create(
+                        model="tts-1",
+                        voice=voice,
+                        input=chunk,
+                    ),
+                    timeout=300,
+                )
+                response.stream_to_file(str(part_path))
+                part_files.append(part_path)
 
-        if proc.returncode != 0:
-            err = stderr.decode()[-300:] if stderr else "unknown error"
-            return f"Audio generation failed (exit {proc.returncode}): {err}"
+            # Concatenate with ffmpeg
+            list_file = dest / f".tmp_{filename}_list.txt"
+            list_file.write_text(
+                "\n".join(f"file '{p}'" for p in part_files),
+                encoding="utf-8",
+            )
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(list_file), "-c", "copy", str(filepath),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+
+            # Cleanup temp files
+            for p in part_files:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+            try:
+                list_file.unlink()
+            except OSError:
+                pass
 
         size_mb = filepath.stat().st_size / (1024 * 1024)
         word_count = len(text.split())
@@ -814,17 +836,9 @@ async def execute_generate_audio(args: dict) -> str:
         )
 
     except asyncio.TimeoutError:
-        try:
-            text_path.unlink()
-        except OSError:
-            pass
         return "Audio generation timed out after 5 minutes."
-    except FileNotFoundError:
-        try:
-            text_path.unlink()
-        except OSError:
-            pass
-        return "edge-tts not found. Install with: pip3 install edge-tts"
+    except APIError as e:
+        return f"OpenAI TTS API error: {e}"
 
 
 # --------------------------------------------------------------------------- #
@@ -1219,18 +1233,11 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         checks.append("Output directory: not yet created")
 
-    # edge-tts availability
-    edge_tts_bin = shutil.which("edge-tts")
-    if not edge_tts_bin:
-        for pyver in ("3.9", "3.10", "3.11", "3.12", "3.13"):
-            candidate = Path.home() / "Library" / "Python" / pyver / "bin" / "edge-tts"
-            if candidate.exists():
-                edge_tts_bin = str(candidate)
-                break
-    if edge_tts_bin:
-        checks.append("edge-tts: OK")
+    # TTS availability
+    if LLM_API_KEY:
+        checks.append("TTS: OpenAI TTS (nova voice)")
     else:
-        checks.append("edge-tts: not found (audio generation unavailable)")
+        checks.append("TTS: unavailable (no LLM_API_KEY)")
 
     await update.message.reply_text(
         "ClawBio Health Check\n"
@@ -1246,32 +1253,34 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _send_voice_reply(bot, chat_id: int, text: str) -> bool:
     """Convert text to OGG/Opus voice message and send via Telegram.
 
-    Uses macOS say (Daniel voice) -> ffmpeg -> OGG/Opus.
+    Uses OpenAI TTS API (nova voice) for natural-sounding speech,
+    then converts to OGG/Opus for Telegram's voice message format.
     Returns True if voice was sent, False on failure.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        text_file = os.path.join(tmpdir, "reply.txt")
-        aiff_file = os.path.join(tmpdir, "reply.aiff")
+        mp3_file = os.path.join(tmpdir, "reply.mp3")
         ogg_file = os.path.join(tmpdir, "reply.ogg")
 
-        with open(text_file, "w", encoding="utf-8") as f:
-            f.write(text)
-
-        # Generate speech with macOS say (Samantha = smooth US female)
-        proc = await asyncio.create_subprocess_exec(
-            "say", "-v", "Samantha", "-r", "170",
-            "-f", text_file, "-o", aiff_file,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-        if proc.returncode != 0:
-            logger.warning("say command failed for voice reply")
+        try:
+            tts_client = AsyncOpenAI(api_key=LLM_API_KEY)
+            # Truncate to OpenAI's 4096-char limit for voice replies
+            tts_text = text[:4096]
+            response = await asyncio.wait_for(
+                tts_client.audio.speech.create(
+                    model="tts-1",
+                    voice="nova",
+                    input=tts_text,
+                ),
+                timeout=120,
+            )
+            response.stream_to_file(mp3_file)
+        except Exception as e:
+            logger.warning(f"OpenAI TTS failed for voice reply: {e}")
             return False
 
         # Convert to OGG/Opus (Telegram voice format)
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-i", aiff_file,
+            "ffmpeg", "-y", "-i", mp3_file,
             "-codec:a", "libopus", "-b:a", "48k",
             ogg_file,
             stdout=asyncio.subprocess.DEVNULL,
