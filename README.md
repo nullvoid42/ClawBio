@@ -298,7 +298,7 @@ python -m pytest
 
 Get your own ClawBio Telegram bot running in the cloud — no coding required.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/TEMPLATE_ID)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/2h8RD6)
 
 **You'll need:**
 1. A **Telegram bot token** — message [@BotFather](https://t.me/BotFather) on Telegram, send `/newbot`
@@ -307,8 +307,6 @@ Get your own ClawBio Telegram bot running in the cloud — no coding required.
 Railway will ask you to paste these during setup. That's it — your bot will be live in ~2 minutes.
 
 > **Privacy note:** When running on Railway, genetic data is processed on Railway's servers (not your machine). Data is not sent to external APIs, but it does exist on the Railway container temporarily. For maximum privacy, use the [local install](#quick-start) instead.
-
-> **Note:** The `TEMPLATE_ID` above is a placeholder. After deploying to Railway yourself, publish it as a template to get the real URL, then update this button.
 
 ---
 
