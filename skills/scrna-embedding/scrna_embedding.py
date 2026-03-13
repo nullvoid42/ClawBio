@@ -27,6 +27,10 @@ from clawbio.common.report import (
 )
 from clawbio.common.scrna_io import compute_input_checksum, load_count_adata
 
+EMBEDDING_ARTIFACT_KEY = "clawbio_scrna_embedding"
+DEFAULT_DOWNSTREAM_REP = "X_scvi"
+DEFAULT_COUNTS_LAYER = "counts"
+
 
 def _import_scanpy():
     """Import scanpy lazily with a clear user-facing error."""
@@ -444,10 +448,41 @@ def plot_core_figures(
     return created
 
 
-def write_integrated_h5ad(adata, output_dir: Path) -> Path:
-    """Write integrated AnnData with latent embedding and downstream annotations."""
+def build_downstream_scrna_command(path: str = "integrated.h5ad") -> str:
+    """Return the recommended downstream scRNA command."""
+    return f"clawbio.py run scrna --input {path} --use-rep {DEFAULT_DOWNSTREAM_REP}"
+
+
+def write_integrated_h5ad(
+    adata,
+    output_dir: Path,
+    *,
+    raw_counts_adata,
+    params: dict[str, Any],
+) -> Path:
+    """Write integrated AnnData with latent embedding and downstream metadata."""
     path = output_dir / "integrated.h5ad"
-    adata.write_h5ad(path)
+    artifact = adata.copy()
+    counts_matrix = raw_counts_adata.X
+    artifact.layers[DEFAULT_COUNTS_LAYER] = (
+        counts_matrix.copy() if hasattr(counts_matrix, "copy") else counts_matrix
+    )
+    artifact.uns[EMBEDDING_ARTIFACT_KEY] = {
+        "source_skill": "scrna-embedding",
+        "version": "0.1.0",
+        "preferred_rep": DEFAULT_DOWNSTREAM_REP,
+        "counts_layer": DEFAULT_COUNTS_LAYER,
+        "x_matrix_kind": "log1p_normalized",
+        "neighbors_rep": DEFAULT_DOWNSTREAM_REP,
+        "downstream_command": build_downstream_scrna_command(),
+        "params": {
+            "method": params["method"],
+            "batch_key": params["batch_key"],
+            "latent_dim": params["latent_dim"],
+            "n_neighbors": params["n_neighbors"],
+        },
+    }
+    artifact.write_h5ad(path)
     return path
 
 
@@ -464,6 +499,7 @@ def render_report(
     batch_key: str,
     latent_color_key: str,
     batch_metrics_path: Path | None,
+    downstream_command: str,
 ) -> Path:
     """Create markdown report.md."""
     header = generate_report_header(
@@ -518,7 +554,13 @@ def render_report(
 
 ## Key Outputs
 
-- `integrated.h5ad` with `obsm["X_scvi"]` and UMAP coordinates
+- `integrated.h5ad` with `obsm["X_scvi"]`, log-normalized `X`, and raw counts in `layers["counts"]`
+
+## Downstream Workflow
+
+- Recommended next step for clustering, annotation, and contrastive markers:
+  `{downstream_command}`
+- `integrated.h5ad` carries ClawBio metadata in `uns["{EMBEDDING_ARTIFACT_KEY}"]` so `scrna-orchestrator` can auto-detect latent downstream mode
 
 ## Methods
 
@@ -529,7 +571,7 @@ def render_report(
 - Training: `latent_dim={params["latent_dim"]}`, `max_epochs={params["max_epochs"]}`, `accelerator={params["accelerator"]}`
 - Neighbors graph: `use_rep="X_scvi"`, `n_neighbors={params["n_neighbors"]}`
 - Visualization labels: latent UMAP uses `{latent_color_key}`; if no annotation exists, `scvi_latent_group` is derived from the scVI graph for display only
-- Output focus: latent embedding export and optional batch-view diagnostics only
+- Output focus: latent embedding export, stable integrated artifact generation, and optional batch-view diagnostics only
 
 ## Reproducibility
 
@@ -730,7 +772,6 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         batch_key=batch_key,
         latent_color_key=latent_color_key,
     )
-    integrated_path = write_integrated_h5ad(adata_latent, output_dir)
     params = {
         "method": args.method,
         "layer": args.layer or "",
@@ -745,6 +786,13 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "accelerator": args.accelerator,
         "random_state": args.random_state,
     }
+    integrated_path = write_integrated_h5ad(
+        adata_latent,
+        output_dir,
+        raw_counts_adata=adata_qc,
+        params=params,
+    )
+    downstream_command = build_downstream_scrna_command(integrated_path.name)
     report_path = render_report(
         output_dir=output_dir,
         input_source=input_source,
@@ -757,6 +805,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         batch_key=batch_key,
         latent_color_key=latent_color_key,
         batch_metrics_path=batch_metrics_path,
+        downstream_command=downstream_command,
     )
 
     tables_written = [path.name for path in table_paths.values()]
@@ -777,6 +826,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "accelerator_used": accelerator_used,
             "latent_plot_color_by": latent_color_key,
             "batch_mixing": batch_metrics_summary,
+            "downstream_scrna_command": downstream_command,
         },
         data={
             "method": args.method,
@@ -794,6 +844,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "tables": tables_written,
             "figures": figures_written,
             "integrated_h5ad": integrated_path.name,
+            "counts_layer": DEFAULT_COUNTS_LAYER,
+            "artifact_metadata_key": EMBEDDING_ARTIFACT_KEY,
+            "preferred_downstream_rep": DEFAULT_DOWNSTREAM_REP,
+            "downstream_scrna_command": downstream_command,
             "demo_source": demo_source if is_demo else "not_demo",
             "disclaimer": DISCLAIMER,
         },

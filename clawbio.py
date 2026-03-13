@@ -297,7 +297,7 @@ SKILLS = {
     "scrna": {
         "script": SKILLS_DIR / "scrna-orchestrator" / "scrna_orchestrator.py",
         "demo_args": ["--demo"],
-        "description": "scRNA Orchestrator (Scanpy QC, doublet detection, clustering, annotation, optional two-group DE + volcano)",
+        "description": "scRNA Orchestrator (Scanpy QC, doublet detection, clustering, annotation, optional latent downstream mode, contrastive markers)",
         "allowed_extra_flags": {
             "--min-genes",
             "--min-cells",
@@ -305,9 +305,15 @@ SKILLS = {
             "--n-top-hvg",
             "--n-pcs",
             "--n-neighbors",
+            "--use-rep",
             "--leiden-resolution",
             "--random-state",
             "--top-markers",
+            "--contrast-groupby",
+            "--contrast-group1",
+            "--contrast-group2",
+            "--contrast-top-genes",
+            "--contrast-volcano",
             "--de-groupby",
             "--de-group1",
             "--de-group2",
@@ -322,7 +328,7 @@ SKILLS = {
     "scrna-embedding": {
         "script": SKILLS_DIR / "scrna-embedding" / "scrna_embedding.py",
         "demo_args": ["--demo"],
-        "description": "scRNA Embedding (scVI latent embedding, optional batch integration, clustering, markers, integrated h5ad export)",
+        "description": "scRNA Embedding (scVI latent embedding, optional batch integration, stable integrated h5ad export)",
         "allowed_extra_flags": {
             "--method",
             "--layer",
@@ -853,6 +859,11 @@ def main():
         help="Neighbors for graph construction (scrna/scrna-embedding skill)",
     )
     run_parser.add_argument(
+        "--use-rep",
+        default=None,
+        help="Graph representation key or mode such as `auto`, `none`, or `X_scvi` (scrna skill)",
+    )
+    run_parser.add_argument(
         "--leiden-resolution",
         type=float,
         default=None,
@@ -870,19 +881,45 @@ def main():
         default=None,
         help="Training accelerator (scrna-embedding skill)",
     )
-    run_parser.add_argument("--de-groupby", default=None, help="obs column for DE (scrna skill)")
-    run_parser.add_argument("--de-group1", default=None, help="Group 1 value for DE (scrna skill)")
-    run_parser.add_argument("--de-group2", default=None, help="Group 2 reference value for DE (scrna skill)")
+    run_parser.add_argument(
+        "--contrast-groupby",
+        default=None,
+        help="obs column for contrastive marker analysis (scrna skill)",
+    )
+    run_parser.add_argument(
+        "--contrast-group1",
+        default=None,
+        help="Group 1 value for contrastive marker analysis (scrna skill)",
+    )
+    run_parser.add_argument(
+        "--contrast-group2",
+        default=None,
+        help="Group 2 reference value for contrastive marker analysis (scrna skill)",
+    )
+    run_parser.add_argument("--de-groupby", default=None, help="Deprecated alias for --contrast-groupby (scrna skill)")
+    run_parser.add_argument("--de-group1", default=None, help="Deprecated alias for --contrast-group1 (scrna skill)")
+    run_parser.add_argument("--de-group2", default=None, help="Deprecated alias for --contrast-group2 (scrna skill)")
+    run_parser.add_argument(
+        "--contrast-top-genes",
+        type=int,
+        default=None,
+        help="Top contrastive marker genes in summary table (scrna skill)",
+    )
     run_parser.add_argument(
         "--de-top-genes",
         type=int,
         default=None,
-        help="Top DE genes in summary table (scrna skill)",
+        help="Deprecated alias for --contrast-top-genes (scrna skill)",
+    )
+    run_parser.add_argument(
+        "--contrast-volcano",
+        action="store_true",
+        help="Generate contrastive markers volcano plot (scrna skill)",
     )
     run_parser.add_argument(
         "--de-volcano",
         action="store_true",
-        help="Generate DE volcano plot (scrna skill)",
+        help="Deprecated alias for --contrast-volcano (scrna skill)",
     )
     run_parser.add_argument(
         "--doublet-method",
@@ -961,6 +998,8 @@ def main():
             extra.extend(["--max-epochs", str(args.max_epochs)])
         if getattr(args, "n_neighbors", None) is not None:
             extra.extend(["--n-neighbors", str(args.n_neighbors)])
+        if getattr(args, "use_rep", None):
+            extra.extend(["--use-rep", args.use_rep])
         if getattr(args, "leiden_resolution", None) is not None:
             extra.extend(["--leiden-resolution", str(args.leiden_resolution)])
         if getattr(args, "random_state", None) is not None:
@@ -969,6 +1008,16 @@ def main():
             extra.extend(["--top-markers", str(args.top_markers)])
         if getattr(args, "accelerator", None):
             extra.extend(["--accelerator", args.accelerator])
+        if getattr(args, "contrast_groupby", None):
+            extra.extend(["--contrast-groupby", args.contrast_groupby])
+        if getattr(args, "contrast_group1", None):
+            extra.extend(["--contrast-group1", args.contrast_group1])
+        if getattr(args, "contrast_group2", None):
+            extra.extend(["--contrast-group2", args.contrast_group2])
+        if getattr(args, "contrast_top_genes", None) is not None:
+            extra.extend(["--contrast-top-genes", str(args.contrast_top_genes)])
+        if getattr(args, "contrast_volcano", False):
+            extra.append("--contrast-volcano")
         if getattr(args, "de_groupby", None):
             extra.extend(["--de-groupby", args.de_groupby])
         if getattr(args, "de_group1", None):

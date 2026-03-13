@@ -62,6 +62,9 @@ KEYWORD_MAP: dict[str, str] = {
     "integration": "scrna-embedding",
     "latent": "scrna-embedding",
     "embedding": "scrna-embedding",
+    "x_scvi": "scrna-orchestrator",
+    "integrated.h5ad": "scrna-orchestrator",
+    "integrated h5ad": "scrna-orchestrator",
     "diversity": "equity-scorer",
     "equity": "equity-scorer",
     "heim": "equity-scorer",
@@ -136,6 +139,31 @@ KEYWORD_MAP: dict[str, str] = {
 }
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent
+SCRNA_LATENT_ARTIFACT_TERMS = (
+    "x_scvi",
+    "integrated.h5ad",
+    "integrated h5ad",
+    "after scvi",
+    "after scvi embedding",
+)
+SCRNA_DOWNSTREAM_TERMS = (
+    "marker",
+    "markers",
+    "annotation",
+    "annotate",
+    "celltypist",
+    "contrastive",
+    "cluster",
+    "clustering",
+)
+SCRNA_EMBEDDING_TERMS = (
+    "scvi",
+    "latent",
+    "embedding",
+    "integration",
+    "batch correction",
+    "batch integration",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +225,45 @@ def detect_skill_from_tabular_header(filepath: Path) -> str | None:
 
 def detect_skill_from_query(query: str) -> str | None:
     """Determine which skill matches a natural language query."""
+    skill, _ = detect_skill_with_hint_from_query(query)
+    return skill
+
+
+def detect_skill_with_hint_from_query(query: str) -> tuple[str | None, str]:
+    """Determine which skill matches a natural language query and explain chain-aware routing."""
     query_lower = query.lower()
+    wants_embedding = any(term in query_lower for term in SCRNA_EMBEDDING_TERMS)
+    wants_downstream = any(term in query_lower for term in SCRNA_DOWNSTREAM_TERMS)
+    has_latent_artifact = any(term in query_lower for term in SCRNA_LATENT_ARTIFACT_TERMS)
+
+    if has_latent_artifact and wants_downstream:
+        return (
+            "scrna-orchestrator",
+            "Detected a downstream latent-analysis workflow. Use `scrna-orchestrator` "
+            "with `--use-rep X_scvi` on `integrated.h5ad` to run clustering, annotation, "
+            "and contrastive markers after scVI.",
+        )
+    if wants_embedding and wants_downstream:
+        return (
+            "scrna-embedding",
+            "Detected a two-step advanced scRNA workflow. First run `scrna-embedding` to "
+            "produce `integrated.h5ad`, then run `scrna-orchestrator` with "
+            "`--use-rep X_scvi` for downstream clustering, annotation, and contrastive markers.",
+        )
     for keyword, skill in KEYWORD_MAP.items():
         if keyword in query_lower:
-            return skill
-    return None
+            return skill, ""
+    return None, ""
+
+
+def detect_routing_hint_for_file(filepath: Path) -> str:
+    """Return a routing hint for special-case input files."""
+    if filepath.name == "integrated.h5ad":
+        return (
+            "Detected `integrated.h5ad`. This is usually the downstream artifact from "
+            "`scrna-embedding`; `scrna-orchestrator` can consume it with `--use-rep X_scvi`."
+        )
+    return ""
 
 
 def detect_skill_with_flock(query: str) -> tuple[str | None, str]:
@@ -304,6 +366,10 @@ def detect_multiple_skills(query: str) -> list[str]:
 
     Returns a list of skill directory names.
     """
+    skill, _ = detect_skill_with_hint_from_query(query)
+    if skill in {"scrna-embedding", "scrna-orchestrator"}:
+        return [skill]
+
     query_lower = query.lower()
     matched = []
     seen = set()
@@ -311,8 +377,6 @@ def detect_multiple_skills(query: str) -> list[str]:
         if keyword in query_lower and skill not in seen:
             matched.append(skill)
             seen.add(skill)
-    if "scrna-embedding" in seen and "scrna-orchestrator" in seen:
-        matched = [skill for skill in matched if skill != "scrna-orchestrator"]
     return matched
 
 
@@ -417,6 +481,7 @@ def main() -> None:
         input_path = Path(args.input)
     else:
         input_path = None
+    routing_hint = ""
 
     if args.skill:
         # SEC INT-002: reject path traversal in skill name
@@ -428,6 +493,7 @@ def main() -> None:
     elif input_path and input_path.exists():
         skill = detect_skill_from_file(input_path)
         method = "file-extension"
+        routing_hint = detect_routing_hint_for_file(input_path)
     elif args.input:
         # Multi-detect mode: find all matching skills
         if args.multi:
@@ -442,11 +508,12 @@ def main() -> None:
                 )
                 print(json.dumps(results, indent=2))
                 return
-        skill = detect_skill_from_query(args.input)
+        skill, routing_hint = detect_skill_with_hint_from_query(args.input)
         method = "keyword"
     else:
         skill = None
         method = "none"
+        routing_hint = ""
 
     # Fallback: if keyword matching failed, try FLock LLM routing
     if not skill and args.provider == "flock" and args.input:
@@ -484,6 +551,8 @@ def main() -> None:
         "skill_dir": str(skill_dir),
         "available_skills": list_available_skills(),
     }
+    if routing_hint:
+        result["routing_hint"] = routing_hint
     if args.profile:
         result["profile"] = args.profile
     print(json.dumps(result, indent=2))

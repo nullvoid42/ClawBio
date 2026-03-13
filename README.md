@@ -135,9 +135,10 @@ report/
 | [Genome Comparator](skills/genome-compare/) | **MVP** | Pairwise IBS vs George Church (PGP-1) + ancestry estimation |
 | [Galaxy Bridge](skills/galaxy-bridge/) | **MVP** | Search, run, and chain 8,000+ Galaxy bioinformatics tools |
 | [RNA-seq DE](skills/rnaseq-de/) | **MVP** | Bulk/pseudo-bulk differential expression with QC + PCA + contrasts |
+| [scRNA Embedding](skills/scrna-embedding/) | **MVP** | scVI latent embedding, batch integration, and stable `integrated.h5ad` export for downstream latent analysis |
 | [VCF Annotator](skills/vcf-annotator/) | Planned | Variant annotation with VEP, ClinVar, gnomAD |
 | [Lit Synthesizer](skills/lit-synthesizer/) | Planned | PubMed/bioRxiv search with LLM summarisation and citation graphs |
-| [scRNA Orchestrator](skills/scrna-orchestrator/) | **MVP** | Scanpy automation: QC, optional doublet detection, clustering, marker DE analysis, visualisation |
+| [scRNA Orchestrator](skills/scrna-orchestrator/) | **MVP** | Scanpy automation: QC, optional doublet detection, clustering, markers, annotation, latent downstream mode, contrastive markers |
 | [Struct Predictor](skills/struct-predictor/) | Planned | AlphaFold/Boltz local structure prediction |
 | [Repro Enforcer](skills/repro-enforcer/) | Planned | Export any analysis as Conda env + Singularity + Nextflow pipeline |
 
