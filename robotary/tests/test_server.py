@@ -150,3 +150,31 @@ def test_build_skill_command_profile_report():
 
     cmd, tmpdir = build_skill_command("profile-report", {})
     assert "--demo" in cmd
+
+
+def test_build_interpret_messages():
+    """Interpret messages should include query, skill name, report, and disclaimer."""
+    from server import build_interpret_messages
+
+    messages = build_interpret_messages(
+        query="What drugs interact with CYP2D6?",
+        skill="pharmgx-reporter",
+        report="## PharmGx Report\nCYP2D6: *1/*4 — Intermediate Metabolizer",
+    )
+    system_msg = messages[0]["content"]
+    assert "robot terry" in system_msg.lower()
+    assert "not a medical device" in system_msg.lower() or "not medical advice" in system_msg.lower()
+    user_msg = messages[1]["content"]
+    assert "CYP2D6" in user_msg
+    assert "pharmgx-reporter" in user_msg
+
+
+def test_build_interpret_messages_truncates_long_report():
+    """Reports longer than 8000 chars should be truncated."""
+    from server import build_interpret_messages
+
+    long_report = "x" * 10000
+    messages = build_interpret_messages("test", "test-skill", long_report)
+    user_msg = messages[1]["content"]
+    assert len(user_msg) < 10000
+    assert "truncated" in user_msg.lower()

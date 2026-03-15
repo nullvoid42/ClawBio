@@ -227,6 +227,65 @@ async def run_skill(skill_dir_name: str, params: dict, on_log: callable) -> dict
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+INTERPRET_SYSTEM = """You are Robot Terry, a friendly bioinformatics assistant.
+Summarise this genomic report conversationally. Be direct and helpful.
+
+Rules:
+- One short opening sentence answering the user's question
+- 2-3 bullet points with the most important findings
+- One sentence takeaway
+- End with: "*ClawBio is a research and educational tool. It is not a medical device and does not provide clinical diagnoses. Consult a healthcare professional before making any medical decisions.*"
+- No headers, no sections, no technical deep-dives
+- Do NOT list every drug/gene — just the highlights
+- This was run on Manuel Corpas's publicly available genome — mention that these are demo results"""
+
+
+def build_interpret_messages(query: str, skill: str, report: str) -> list[dict]:
+    """Build the messages for the interpretation LLM call."""
+    if len(report) > 8000:
+        report = report[:8000] + "\n\n... (report truncated) ..."
+
+    user_content = f"User asked: \"{query}\"\nSkill: {skill}\n\nRaw report:\n---\n{report}\n---"
+
+    return [
+        {"role": "system", "content": INTERPRET_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
+
+
+async def stream_interpret(query: str, skill: str, report: str, on_token: callable):
+    """Stream the interpretation response token-by-token via on_token callback."""
+    messages = build_interpret_messages(query, skill, report)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        async with client.stream(
+            "POST",
+            f"{LLM_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+            json={
+                "model": LLM_MODEL,
+                "messages": messages,
+                "max_tokens": 500,
+                "stream": True,
+            },
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        await on_token(content)
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
 app = FastAPI(title="Robotary")
 
 # Serve static assets if directory exists
