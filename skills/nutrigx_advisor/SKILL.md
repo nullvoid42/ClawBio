@@ -1,9 +1,39 @@
+---
+name: nutrigx-advisor
+description: Personalised nutrition report from consumer genetic data (23andMe, AncestryDNA, VCF) — interrogates nutritionally-relevant SNPs and generates actionable dietary guidance, all computed locally.
+version: 0.1.0
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python3
+      env: []
+      config: []
+    always: false
+    emoji: "🥦"
+    homepage: https://github.com/ClawBio/ClawBio
+    os: [macos, linux]
+    install:
+      - kind: pip
+        package: pandas numpy matplotlib seaborn
+        bins: []
+    trigger_keywords:
+      - personalised nutrition
+      - nutrigenomics
+      - diet genetics
+      - MTHFR
+      - APOE
+      - FTO
+      - vitamin D
+      - caffeine metabolism
+      - lactose
+      - omega-3
+      - folate
+---
+
 # NutriGx Advisor — Personalised Nutrition from Genetic Data
 
-**Skill ID**: `nutrigx-advisor`  
-**Version**: 0.1.0  
-**Status**: MVP  
-**Author**: David de Lorenzo (ClawBio Community) 
+**Author**: David de Lorenzo (ClawBio Community)
 **Requires**: Python 3.11+, pandas, numpy, matplotlib, seaborn, reportlab (optional)
 
 ---
