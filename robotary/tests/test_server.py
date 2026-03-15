@@ -1,6 +1,10 @@
 """Tests for Robotary server."""
+import json
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 # Add robotary to path
 ROBOTARY_DIR = Path(__file__).resolve().parent.parent
@@ -28,3 +32,72 @@ def test_skill_catalog_descriptions_are_strings():
     for name, desc in catalog.items():
         assert isinstance(desc, str)
         assert len(desc) <= 200
+
+
+@pytest.mark.asyncio
+async def test_route_query_returns_skill_and_params():
+    """Route function should return skill name, confidence, and params."""
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": json.dumps({
+                    "skill": "pharmgx-reporter",
+                    "confidence": 0.94,
+                    "reasoning": "User asks about drug interactions",
+                    "params": {},
+                })
+            }
+        }]
+    }
+
+    with patch("server.llm_chat", new_callable=AsyncMock, return_value=mock_response):
+        from server import route_query
+        result = await route_query("What drugs should I watch out for?")
+        assert result["skill"] == "pharmgx-reporter"
+        assert result["confidence"] >= 0.0
+        assert "params" in result
+
+
+@pytest.mark.asyncio
+async def test_route_query_extracts_params():
+    """Route function should extract skill-specific params from query."""
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": json.dumps({
+                    "skill": "gwas-prs",
+                    "confidence": 0.91,
+                    "reasoning": "User asks about diabetes risk",
+                    "params": {"trait": "type 2 diabetes"},
+                })
+            }
+        }]
+    }
+
+    with patch("server.llm_chat", new_callable=AsyncMock, return_value=mock_response):
+        from server import route_query
+        result = await route_query("What's my risk for type 2 diabetes?")
+        assert result["skill"] == "gwas-prs"
+        assert result["params"]["trait"] == "type 2 diabetes"
+
+
+@pytest.mark.asyncio
+async def test_route_query_no_match():
+    """Route function should return null skill when no match."""
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": json.dumps({
+                    "skill": None,
+                    "confidence": 0.0,
+                    "reasoning": "Not a bioinformatics question",
+                    "params": {},
+                })
+            }
+        }]
+    }
+
+    with patch("server.llm_chat", new_callable=AsyncMock, return_value=mock_response):
+        from server import route_query
+        result = await route_query("What's the weather today?")
+        assert result["skill"] is None

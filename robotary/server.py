@@ -72,6 +72,78 @@ def build_skill_catalog() -> dict[str, str]:
 
 SKILL_CATALOG = build_skill_catalog()
 
+import httpx
+
+# LLM configuration (OpenAI-compatible API)
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
+LLM_MODEL = os.environ.get("CLAWBIO_MODEL", "gpt-4o-mini")
+
+
+ROUTING_PROMPT = """You are a skill router for ClawBio, a bioinformatics agent.
+Given a user query, pick the single best skill to handle it.
+
+Available skills:
+{skills}
+
+Respond with ONLY a JSON object:
+{{"skill": "<skill-name>", "confidence": <0-1>, "reasoning": "<one sentence>", "params": {{<skill-specific params>}}}}
+
+Param extraction rules:
+- gwas-prs: extract {{"trait": "<disease/trait name>"}} from the query
+- clinpgx: extract {{"gene": "<gene symbol>"}} if mentioned, else empty
+- gwas-lookup: extract {{"rsid": "<rs number>"}} if mentioned, else empty
+- All other skills: params should be {{}}
+
+If no skill matches, respond: {{"skill": null, "confidence": 0, "reasoning": "<why>", "params": {{}}}}""".format(
+    skills="\n".join(f"- {name}: {desc}" for name, desc in SKILL_CATALOG.items())
+)
+
+
+async def llm_chat(messages: list[dict], max_tokens: int = 300) -> dict:
+    """Call OpenAI-compatible chat API."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{LLM_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+            json={
+                "model": LLM_MODEL,
+                "messages": messages,
+                "max_tokens": max_tokens,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def route_query(query: str) -> dict:
+    """Route a user query to the best skill. Returns {skill, confidence, reasoning, params}."""
+    messages = [
+        {"role": "system", "content": ROUTING_PROMPT},
+        {"role": "user", "content": query},
+    ]
+    resp = await llm_chat(messages, max_tokens=200)
+    text = resp["choices"][0]["message"]["content"].strip()
+
+    # Strip markdown code fences if present
+    if "```" in text:
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        result = {"skill": None, "confidence": 0, "reasoning": f"Parse error: {text[:100]}", "params": {}}
+
+    # Ensure params key exists
+    if "params" not in result:
+        result["params"] = {}
+
+    return result
+
+
 app = FastAPI(title="Robotary")
 
 # Serve static assets if directory exists
