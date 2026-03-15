@@ -101,3 +101,52 @@ async def test_route_query_no_match():
         from server import route_query
         result = await route_query("What's the weather today?")
         assert result["skill"] is None
+
+
+def test_build_skill_command_genome_skill():
+    """Genome-based skills should use --input with Manuel Corpas genome."""
+    from server import build_skill_command, GENOME_PATH
+
+    cmd, tmpdir = build_skill_command("pharmgx-reporter", {})
+    assert sys.executable in cmd[0] or "python" in cmd[0]
+    assert "--input" in cmd
+    assert str(GENOME_PATH) in cmd
+    assert "--output" in cmd
+    assert tmpdir is not None
+
+
+def test_build_skill_command_demo_skill():
+    """API-based skills should use --demo flag."""
+    from server import build_skill_command
+
+    cmd, tmpdir = build_skill_command("clinpgx", {"gene": "CYP2D6"})
+    assert "--gene" in cmd
+    assert "CYP2D6" in cmd
+    assert "--output" in cmd
+
+
+def test_build_skill_command_gwas_prs_with_trait():
+    """gwas-prs should include --trait from params."""
+    from server import build_skill_command
+
+    cmd, tmpdir = build_skill_command("gwas-prs", {"trait": "type 2 diabetes"})
+    assert "--input" in cmd
+    assert "--trait" in cmd
+    assert "type 2 diabetes" in cmd
+
+
+def test_build_skill_command_gwas_lookup_with_rsid():
+    """gwas-lookup should include --rsid from params."""
+    from server import build_skill_command
+
+    cmd, tmpdir = build_skill_command("gwas-lookup", {"rsid": "rs3798220"})
+    assert "--rsid" in cmd
+    assert "rs3798220" in cmd
+
+
+def test_build_skill_command_profile_report():
+    """profile-report should use --demo."""
+    from server import build_skill_command
+
+    cmd, tmpdir = build_skill_command("profile-report", {})
+    assert "--demo" in cmd

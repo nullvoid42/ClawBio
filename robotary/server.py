@@ -144,6 +144,89 @@ async def route_query(query: str) -> dict:
     return result
 
 
+def build_skill_command(skill_dir_name: str, params: dict) -> tuple[list[str], str]:
+    """Build the subprocess command for a skill. Returns (cmd_args, tmpdir_path)."""
+    tmpdir = tempfile.mkdtemp(prefix=f"robotary_{skill_dir_name}_")
+    registry_name = SKILL_REGISTRY_MAP.get(skill_dir_name, skill_dir_name)
+
+    cmd = [sys.executable, str(PROJECT_ROOT / "clawbio.py"), "run", registry_name]
+
+    if skill_dir_name in GENOME_SKILLS:
+        cmd.extend(["--input", str(GENOME_PATH)])
+        # Add skill-specific params
+        if skill_dir_name == "gwas-prs" and params.get("trait"):
+            cmd.extend(["--trait", params["trait"]])
+    elif skill_dir_name == "clinpgx":
+        if params.get("gene"):
+            cmd.extend(["--gene", params["gene"]])
+        else:
+            cmd.append("--demo")
+    elif skill_dir_name == "gwas-lookup":
+        if params.get("rsid"):
+            cmd.extend(["--rsid", params["rsid"]])
+        else:
+            cmd.append("--demo")
+    else:
+        # profile-report and any other skill: use --demo
+        cmd.append("--demo")
+
+    cmd.extend(["--output", tmpdir])
+    return cmd, tmpdir
+
+
+async def run_skill(skill_dir_name: str, params: dict, on_log: callable) -> dict:
+    """Run a skill subprocess, streaming stdout/stderr via on_log callback.
+
+    Returns {success, report, result_json, stdout, stderr}.
+    """
+    cmd, tmpdir = build_skill_command(skill_dir_name, params)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(PROJECT_ROOT),
+        )
+
+        stdout_lines = []
+        stderr_lines = []
+
+        async def read_stream(stream, lines, is_stderr=False):
+            async for raw_line in stream:
+                line = raw_line.decode("utf-8", errors="replace").rstrip()
+                lines.append(line)
+                if on_log:
+                    await on_log(line)
+
+        await asyncio.gather(
+            read_stream(proc.stdout, stdout_lines),
+            read_stream(proc.stderr, stderr_lines, is_stderr=True),
+        )
+        await proc.wait()
+
+        # Read outputs
+        tmppath = Path(tmpdir)
+        report_file = tmppath / "report.md"
+        result_file = tmppath / "result.json"
+
+        report = report_file.read_text() if report_file.exists() else None
+        result_json = json.loads(result_file.read_text()) if result_file.exists() else None
+
+        return {
+            "success": proc.returncode == 0,
+            "report": report,
+            "result_json": result_json,
+            "stdout": "\n".join(stdout_lines),
+            "stderr": "\n".join(stderr_lines),
+        }
+    except Exception as e:
+        return {"success": False, "report": None, "result_json": None, "error": str(e)}
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 app = FastAPI(title="Robotary")
 
 # Serve static assets if directory exists
