@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Robot Terry — ClawBio</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -612,7 +613,7 @@ html, body {
     if (role === "user") {
       div.textContent = text;
     } else {
-      div.innerHTML = text;
+      div.innerHTML = DOMPurify.sanitize(text);
     }
     $messages.appendChild(div);
     scrollMessages();
@@ -627,7 +628,7 @@ html, body {
     if (msg.done) {
       // Finalize streaming bubble
       if (streamingBubble) {
-        streamingBubble.innerHTML = marked.parse(streamingText);
+        streamingBubble.innerHTML = DOMPurify.sanitize(marked.parse(streamingText));
         streamingBubble = null;
         streamingText = "";
         scrollMessages();
@@ -644,7 +645,7 @@ html, body {
 
     streamingText += (msg.content || "");
     // Show partial markdown + cursor
-    streamingBubble.innerHTML = marked.parse(streamingText) + '<span class="streaming-cursor"></span>';
+    streamingBubble.innerHTML = DOMPurify.sanitize(marked.parse(streamingText)) + '<span class="streaming-cursor"></span>';
     scrollMessages();
   }
 

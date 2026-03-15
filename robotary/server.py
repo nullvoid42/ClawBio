@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -72,12 +74,14 @@ def build_skill_catalog() -> dict[str, str]:
 
 SKILL_CATALOG = build_skill_catalog()
 
-import httpx
-
 # LLM configuration (OpenAI-compatible API)
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
 LLM_MODEL = os.environ.get("CLAWBIO_MODEL", "gpt-4o-mini")
+
+if not LLM_API_KEY:
+    import warnings
+    warnings.warn("LLM_API_KEY not set — LLM calls will fail. Set it in your environment.")
 
 
 ROUTING_PROMPT = """You are a skill router for ClawBio, a bioinformatics agent.
@@ -223,7 +227,6 @@ async def run_skill(skill_dir_name: str, params: dict, on_log: callable) -> dict
     except Exception as e:
         return {"success": False, "report": None, "result_json": None, "error": str(e)}
     finally:
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
