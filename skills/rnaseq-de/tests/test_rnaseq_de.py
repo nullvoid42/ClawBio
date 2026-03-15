@@ -1,7 +1,9 @@
+import json
 import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -92,6 +94,7 @@ def test_run_analysis_writes_outputs(tmp_path):
     assert (out_dir / "figures" / "pca.png").exists()
     assert (out_dir / "figures" / "volcano.png").exists()
     assert (out_dir / "reproducibility" / "checksums.sha256").exists()
+    assert (out_dir / "result.json").exists()
 
 
 def test_run_analysis_pseudobulk_fixture(tmp_path):
@@ -111,3 +114,36 @@ def test_run_analysis_pseudobulk_fixture(tmp_path):
     assert (out_dir / "tables" / "de_results.csv").exists()
     assert {"gene", "log2FoldChange", "padj"}.issubset(set(de_df.columns))
     assert de_df.shape[0] >= 2
+
+
+def test_result_json_contains_summary(tmp_path):
+    out_dir = tmp_path / "rnaseq_result_json"
+    run_analysis(
+        counts_path=DEMO_COUNTS,
+        metadata_path=DEMO_META,
+        formula="~ batch + condition",
+        contrast="condition,treated,control",
+        output_dir=out_dir,
+        backend="simple",
+    )
+    result_data = json.loads((out_dir / "result.json").read_text(encoding="utf-8"))
+    assert result_data["skill"] == "rnaseq"
+    assert result_data["summary"]["samples"] == 6
+    assert result_data["summary"]["contrast"] == "condition,treated,control"
+
+
+def test_pydeseq2_reports_lfc_shrinkage(tmp_path):
+    pytest.importorskip("pydeseq2")
+    out_dir = tmp_path / "rnaseq_pydeseq2"
+    run_analysis(
+        counts_path=DEMO_COUNTS,
+        metadata_path=DEMO_META,
+        formula="~ batch + condition",
+        contrast="condition,treated,control",
+        output_dir=out_dir,
+        backend="pydeseq2",
+    )
+    result_data = json.loads((out_dir / "result.json").read_text(encoding="utf-8"))
+    assert result_data["summary"]["backend_used"] == "pydeseq2"
+    assert result_data["summary"]["lfc_shrinkage_applied"] is True
+    assert result_data["summary"]["lfc_shrinkage_coeff"].startswith("condition[")

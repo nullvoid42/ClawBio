@@ -1,6 +1,6 @@
 ---
 name: scrna-embedding
-description: Local scVI-based single-cell latent embedding and batch-aware integration from raw-count .h5ad or 10x Matrix Market input, with integrated AnnData export and latent-space outputs.
+description: Local scVI-based single-cell latent embedding and batch-aware integration from raw-count .h5ad or 10x Matrix Market input, with stable integrated AnnData export for downstream latent analysis.
 version: 0.1.0
 author: Yonghao Zhao
 license: MIT
@@ -15,7 +15,7 @@ metadata:
     always: false
     emoji: "🧬"
     homepage: https://github.com/ClawBio/ClawBio
-    os: [macos, linux]
+    os: [darwin, linux]
     install:
       - kind: uv
         package: scanpy
@@ -48,8 +48,8 @@ You are **scRNA Embedding**, a specialised ClawBio agent for local single-cell l
 
 Single-cell datasets often need a model-based latent representation instead of a purely Scanpy-native PCA workflow.
 
-- **Without it**: Users manually wire together scvi-tools training, latent export, clustering, and report generation.
-- **With it**: One command trains scVI locally, writes `X_scvi`, clusters in latent space, exports marker tables, and saves an integrated `.h5ad`.
+- **Without it**: Users manually wire together scvi-tools training, latent export, downstream handoff, and report generation.
+- **With it**: One command trains scVI locally, writes `X_scvi`, saves a stable `integrated.h5ad`, and hands off cleanly to `scrna-orchestrator` for downstream clustering, annotation, and contrastive markers.
 - **Why ClawBio**: The workflow stays local-first, preserves reproducibility outputs, and keeps the standard `report.md` / `result.json` contract.
 
 ## Core Capabilities
@@ -58,7 +58,7 @@ Single-cell datasets often need a model-based latent representation instead of a
 2. **scVI Latent Embedding**: Train `scvi.model.SCVI` with optional batch-aware integration.
 3. **Latent Output Generation**: Run neighbors and UMAP from `X_scvi`, and export latent coordinates.
 4. **Integration Diagnostics**: Export lightweight batch-mixing metrics when `--batch-key` is provided.
-5. **Integrated Export**: Save `integrated.h5ad` with `obsm["X_scvi"]` and latent-space embeddings.
+5. **Integrated Export**: Save `integrated.h5ad` with `obsm["X_scvi"]`, log-normalized `X`, and raw counts in `layers["counts"]`.
 5. **Reproducibility Bundle**: Emit `commands.sh`, `environment.yml`, and checksums.
 
 ## Input Formats
@@ -77,7 +77,7 @@ When the user asks for scVI embedding, latent integration, or batch correction:
 2. **Filter**: Apply basic QC thresholds for genes, cells, and mitochondrial fraction.
 3. **Train**: Fit `scvi.model.SCVI` on HVG raw counts, optionally using `--batch-key`.
 4. **Project**: Export `X_scvi`, run latent-space neighbors and UMAP.
-5. **Generate**: Write a minimal `report.md`, `result.json`, `integrated.h5ad`, latent tables, figures, and reproducibility files.
+5. **Generate**: Write a minimal `report.md`, `result.json`, `integrated.h5ad`, latent tables, figures, and reproducibility files, plus the recommended downstream `scrna` command.
 
 ## CLI Reference
 
@@ -113,12 +113,13 @@ python clawbio.py run scrna-embedding --demo --batch-key demo_batch
 
 Expected output:
 - `report.md` with scVI-specific embedding and integration summary
-- `integrated.h5ad` containing `obsm["X_scvi"]`
+- `integrated.h5ad` containing `obsm["X_scvi"]`, log-normalized `X`, and `layers["counts"]`
 - figure files (`umap_scvi_latent.png`)
 - optional batch figure (`umap_scvi_batch.png`) when `--batch-key` is set
 - batch diagnostics table (`batch_mixing_metrics.csv`) when `--batch-key` is set
 - latent export table (`latent_embeddings.csv`)
 - reproducibility bundle
+- downstream command for `scrna-orchestrator --use-rep X_scvi`
 
 ## Algorithm / Methodology
 

@@ -31,11 +31,12 @@
 - [ukb-navigator](skills/ukb-navigator/SKILL.md): Semantic search across 22k+ UK Biobank fields
 - [galaxy-bridge](skills/galaxy-bridge/SKILL.md): Galaxy tool discovery and execution — 8,000+ bioinformatics tools from usegalaxy.org
 
-## Skills (Planned)
+## Skills (Implemented / Planned Mix)
 
 - [vcf-annotator](skills/vcf-annotator/SKILL.md): VEP, ClinVar, gnomAD variant annotation
 - [lit-synthesizer](skills/lit-synthesizer/SKILL.md): PubMed/bioRxiv literature search and LLM summarisation
-- [scrna-orchestrator](skills/scrna-orchestrator/SKILL.md): Scanpy single-cell RNA-seq automation
+- [scrna-embedding](skills/scrna-embedding/SKILL.md): scVI latent embedding, batch integration, and stable integrated.h5ad export
+- [scrna-orchestrator](skills/scrna-orchestrator/SKILL.md): Scanpy single-cell RNA-seq automation with latent downstream mode and contrastive markers
 - [struct-predictor](skills/struct-predictor/SKILL.md): AlphaFold/Boltz protein structure prediction
 - [repro-enforcer](skills/repro-enforcer/SKILL.md): Conda/Singularity/Nextflow reproducibility export
 - [seq-wrangler](skills/seq-wrangler/SKILL.md): FASTQ/BAM QC and alignment

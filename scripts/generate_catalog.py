@@ -98,6 +98,8 @@ FOLDER_TO_ALIAS = {
     "gwas-lookup": "gwas",
     "profile-report": "profile",
     "galaxy-bridge": "galaxy",
+    "rnaseq-de": "rnaseq",
+    "diff-visualizer": "diffviz",
 }
 
 # Skill folders excluded from the public catalog (local-only / gitignored)
@@ -109,7 +111,7 @@ MVP_FOLDERS = {
     "scrna-orchestrator", "scrna-embedding",
     "genome-compare", "drug-photo", "gwas-prs", "clinpgx", "gwas-lookup",
     "profile-report", "bio-orchestrator", "claw-ancestry-pca", "claw-semantic-sim",
-    "ukb-navigator", "galaxy-bridge",
+    "ukb-navigator", "galaxy-bridge", "rnaseq-de", "diff-visualizer",
 }
 
 # Known trigger keywords for orchestrator routing
@@ -125,6 +127,8 @@ TRIGGER_KEYWORDS: dict[str, list[str]] = {
     "nutrigx_advisor": ["nutrition", "nutrigenomics", "diet genetics", "MTHFR", "caffeine", "lactose"],
     "scrna-orchestrator": ["single-cell", "scrna", "h5ad", "mtx", "10x", "scanpy", "umap", "leiden"],
     "scrna-embedding": ["scvi", "latent", "embedding", "integration", "batch correction", "10x"],
+    "rnaseq-de": ["differential expression", "bulk rna", "rna-seq", "count matrix", "deseq2", "pydeseq2"],
+    "diff-visualizer": ["visualize de results", "de visualization", "marker heatmap", "marker dotplot", "top genes heatmap"],
     "claw-ancestry-pca": ["ancestry", "PCA", "admixture", "SGDP", "population structure"],
     "claw-semantic-sim": ["semantic similarity", "disease neglect", "research gaps", "NTDs", "SII"],
     "claw-metagenomics": ["metagenomics", "Kraken2", "RGI", "CARD", "HUMAnN3", "microbiome"],
@@ -146,6 +150,8 @@ CHAINING: dict[str, list[str]] = {
     "nutrigx_advisor": ["profile-report", "pharmgx-reporter"],
     "scrna-orchestrator": [],
     "scrna-embedding": ["scrna-orchestrator"],
+    "rnaseq-de": ["diff-visualizer"],
+    "diff-visualizer": ["rnaseq-de", "scrna-orchestrator"],
     "claw-ancestry-pca": ["genome-compare"],
     "claw-semantic-sim": ["equity-scorer"],
     "claw-metagenomics": [],

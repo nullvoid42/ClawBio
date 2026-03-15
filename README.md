@@ -13,7 +13,7 @@
   <a href="https://github.com/ClawBio/ClawBio/actions/workflows/ci.yml"><img src="https://github.com/ClawBio/ClawBio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.10+-blue?logo=python&logoColor=white" alt="Python 3.10+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
-  <a href="https://clawhub.ai"><img src="https://img.shields.io/badge/ClawHub-18_skills-orange" alt="ClawHub Skills"></a>
+  <a href="https://clawhub.ai"><img src="https://img.shields.io/badge/ClawHub-24_skills-orange" alt="ClawHub Skills"></a>
   <a href="https://github.com/ClawBio/ClawBio/issues"><img src="https://img.shields.io/github/issues/ClawBio/ClawBio" alt="Open Issues"></a>
   <a href="https://clawbio.github.io/ClawBio/slides/"><img src="https://img.shields.io/badge/slides-London_Bioinformatics_Meetup-purple" alt="Slides"></a>
 </p>
@@ -30,7 +30,7 @@
 
 ## What ClawBio Does Today
 
-**18 skills + 8,000 Galaxy tools. Local-first. No cloud. No guessing.**
+**24 skills + 8,000 Galaxy tools. Local-first. No cloud. No guessing.**
 
 Snap a photo of a medication in Telegram. ClawBio identifies the drug from the packaging, queries your pharmacogenomic profile from [your own genome](docs/demo-genome.md), and returns a personalised dosage card — on your machine, in seconds:
 
@@ -136,9 +136,10 @@ report/
 | [Galaxy Bridge](skills/galaxy-bridge/) | **MVP** | Search, run, and chain 8,000+ Galaxy bioinformatics tools |
 | [RNA-seq DE](skills/rnaseq-de/) | **MVP** | Bulk/pseudo-bulk differential expression with QC + PCA + contrasts |
 | [Methylation Clock](skills/methylation-clock/) | **MVP** | Epigenetic age from methylation arrays with PyAging clocks |
+| [scRNA Embedding](skills/scrna-embedding/) | **MVP** | scVI latent embedding, batch integration, and stable `integrated.h5ad` export for downstream latent analysis |
 | [VCF Annotator](skills/vcf-annotator/) | Planned | Variant annotation with VEP, ClinVar, gnomAD |
 | [Lit Synthesizer](skills/lit-synthesizer/) | Planned | PubMed/bioRxiv search with LLM summarisation and citation graphs |
-| [scRNA Orchestrator](skills/scrna-orchestrator/) | **MVP** | Scanpy automation: QC, optional doublet detection, clustering, marker DE analysis, visualisation |
+| [scRNA Orchestrator](skills/scrna-orchestrator/) | **MVP** | Scanpy automation: QC, optional doublet detection, clustering, markers, annotation, latent downstream mode, contrastive markers |
 | [Struct Predictor](skills/struct-predictor/) | Planned | AlphaFold/Boltz local structure prediction |
 | [Repro Enforcer](skills/repro-enforcer/) | Planned | Export any analysis as Conda env + Singularity + Nextflow pipeline |
 
@@ -250,6 +251,19 @@ python semantic_sim.py --demo --output sem_report
 ---
 
 ## Quick Start
+
+### Install as a Claude Code plugin
+
+The fastest way to get ClawBio — two commands inside [Claude Code](https://claude.ai/claude-code):
+
+```
+/plugin marketplace add ClawBio/ClawBio
+/plugin install clawbio
+```
+
+All 24 skills are instantly available as `clawbio:pharmgx-reporter`, `clawbio:genome-compare`, etc. Three slash commands included: `/clawbio:list-skills`, `/clawbio:run-demo`, `/clawbio:analyse`.
+
+### Install from source
 
 ```bash
 git clone https://github.com/ClawBio/ClawBio.git && cd ClawBio

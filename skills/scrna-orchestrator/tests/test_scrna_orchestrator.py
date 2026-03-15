@@ -103,6 +103,52 @@ def _build_human_like_input(path: Path) -> None:
     AnnData(X=np.vstack(rows), obs=obs, var=var).write_h5ad(path)
 
 
+def _build_integrated_latent_input(path: Path) -> None:
+    from anndata import AnnData  # type: ignore
+
+    genes = ["CD3D", "TRBC1", "MS4A1", "CD79A", "LYZ", "S100A8", "NKG7", "GNLY"]
+    rng = np.random.default_rng(2)
+    templates = [
+        np.array([18, 16, 1, 1, 1, 1, 4, 3], dtype=np.int32),
+        np.array([1, 1, 18, 16, 1, 1, 3, 1], dtype=np.int32),
+        np.array([1, 1, 1, 1, 18, 16, 10, 8], dtype=np.int32),
+    ]
+
+    rows = []
+    batches = []
+    for batch_idx in range(2):
+        for cluster_idx, template in enumerate(templates):
+            for _ in range(4):
+                rows.append(rng.poisson(lam=template + batch_idx).astype(np.int32) + 1)
+                batches.append(f"batch_{batch_idx}")
+
+    counts = np.vstack(rows)
+    obs = pd.DataFrame(
+        {
+            "batch": batches,
+            "sample_id": [f"cell_{i}" for i in range(len(rows))],
+        },
+        index=pd.Index([f"cell_{i}" for i in range(len(rows))], dtype="object"),
+    )
+    var = pd.DataFrame(index=pd.Index(genes, dtype="object"))
+    adata = AnnData(X=counts.astype(np.float32), obs=obs, var=var)
+    adata.layers["counts"] = counts.copy()
+    adata.X = np.log1p(counts.astype(np.float32))
+    latent = np.column_stack(
+        [
+            np.repeat([0.0, 3.5, 7.0], repeats=8),
+            np.tile(np.repeat([0.0, 2.0], repeats=4), 3),
+        ]
+    ).astype(np.float32)
+    adata.obsm["X_scvi"] = latent
+    adata.uns["clawbio_scrna_embedding"] = {
+        "source_skill": "scrna-embedding",
+        "preferred_rep": "X_scvi",
+        "counts_layer": "counts",
+    }
+    adata.write_h5ad(path)
+
+
 def _build_10x_mtx_input(matrix_dir: Path, *, compressed: bool = False, prefix: str = "") -> Path:
     from scipy import io, sparse  # type: ignore
 
@@ -159,16 +205,22 @@ def _make_args(output_dir: Path, **overrides) -> SimpleNamespace:
         "n_top_hvg": 2000,
         "n_pcs": 50,
         "n_neighbors": 15,
+        "use_rep": "auto",
         "leiden_resolution": 1.0,
         "random_state": 0,
         "top_markers": 10,
         "doublet_method": "none",
         "annotate": "none",
         "annotation_model": "Immune_All_Low",
+        "contrast_groupby": None,
+        "contrast_group1": None,
+        "contrast_group2": None,
+        "contrast_top_genes": None,
+        "contrast_volcano": False,
         "de_groupby": None,
         "de_group1": None,
         "de_group2": None,
-        "de_top_genes": 50,
+        "de_top_genes": None,
         "de_volcano": False,
     }
     defaults.update(overrides)
@@ -285,20 +337,20 @@ def test_de_two_group_outputs_and_result_metadata(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
-            "--de-group1",
+            "--contrast-group1",
             "cluster_0",
-            "--de-group2",
+            "--contrast-group2",
             "cluster_1",
-            "--de-top-genes",
+            "--contrast-top-genes",
             "7",
         ]
     )
     assert result.returncode == 0, result.stderr
 
-    de_full = output_dir / "tables" / "de_full.csv"
-    de_top = output_dir / "tables" / "de_top.csv"
+    de_full = output_dir / "tables" / "contrastive_markers_full.csv"
+    de_top = output_dir / "tables" / "contrastive_markers_top.csv"
     assert de_full.exists()
     assert de_top.exists()
 
@@ -308,20 +360,20 @@ def test_de_two_group_outputs_and_result_metadata(tmp_path: Path):
     assert 0 < len(de_top_df) <= 7
 
     payload = json.loads((output_dir / "result.json").read_text())
-    de_meta = payload["data"]["de"]
+    de_meta = payload["data"]["contrastive_markers"]
     assert de_meta["enabled"] is True
     assert de_meta["groupby"] == "demo_truth"
     assert de_meta["group1"] == "cluster_0"
     assert de_meta["group2"] == "cluster_1"
     assert de_meta["n_genes_full"] == len(de_full_df)
-    assert de_meta["top_table"] == "de_top.csv"
+    assert de_meta["top_table"] == "contrastive_markers_top.csv"
     assert de_meta["volcano_plot"] == ""
-    assert "de_full.csv" in payload["data"]["tables"]
-    assert "de_top.csv" in payload["data"]["tables"]
-    assert "de_volcano.png" not in payload["data"]["figures"]
+    assert "contrastive_markers_full.csv" in payload["data"]["tables"]
+    assert "contrastive_markers_top.csv" in payload["data"]["tables"]
+    assert "contrastive_markers_volcano.png" not in payload["data"]["figures"]
 
     report_text = (output_dir / "report.md").read_text()
-    assert "Differential Expression (Two-Group)" in report_text
+    assert "Contrastive Marker Analysis (Two-Group)" in report_text
     assert "cluster_0" in report_text
     assert "cluster_1" in report_text
     assert "Volcano plot: not generated" in report_text
@@ -335,29 +387,29 @@ def test_de_volcano_generated_when_requested(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
-            "--de-group1",
+            "--contrast-group1",
             "cluster_0",
-            "--de-group2",
+            "--contrast-group2",
             "cluster_1",
-            "--de-top-genes",
+            "--contrast-top-genes",
             "10",
-            "--de-volcano",
+            "--contrast-volcano",
         ]
     )
     assert result.returncode == 0, result.stderr
 
-    volcano_path = output_dir / "figures" / "de_volcano.png"
+    volcano_path = output_dir / "figures" / "contrastive_markers_volcano.png"
     assert volcano_path.exists()
 
     payload = json.loads((output_dir / "result.json").read_text())
-    de_meta = payload["data"]["de"]
-    assert de_meta["volcano_plot"] == "de_volcano.png"
-    assert "de_volcano.png" in payload["data"]["figures"]
+    de_meta = payload["data"]["contrastive_markers"]
+    assert de_meta["volcano_plot"] == "contrastive_markers_volcano.png"
+    assert "contrastive_markers_volcano.png" in payload["data"]["figures"]
 
     report_text = (output_dir / "report.md").read_text()
-    assert "DE Volcano" in report_text
+    assert "Contrastive Marker Volcano" in report_text
 
 
 def test_report_contains_key_stats(tmp_path: Path):
@@ -452,16 +504,18 @@ def test_load_data_accepts_direct_prefixed_gz_mtx_file(tmp_path: Path):
     matrix_dir = tmp_path / "prefixed_matrix"
     matrix_path = _build_10x_mtx_input(matrix_dir, compressed=True, prefix="sample_")
 
-    adata, input_path, is_demo, demo_source, input_source = module.load_data(
+    adata, input_path, is_demo, demo_source, input_source, latent_context = module.load_data(
         str(matrix_path),
         demo=False,
         random_state=0,
+        use_rep="auto",
     )
 
     assert adata.n_obs == 18
     assert adata.n_vars == 8
     assert input_path == matrix_path
     assert is_demo is False
+    assert latent_context["resolved_use_rep"] == ""
     assert demo_source is None
     assert input_source["format"] == "10x_mtx"
 
@@ -545,7 +599,7 @@ def test_commands_sh_quotes_demo_output_path(tmp_path: Path):
     assert f"--output {shlex.quote(str(output_dir))}" in commands_sh
 
 
-def test_commands_sh_contains_de_flags_when_enabled(tmp_path: Path):
+def test_commands_sh_contains_contrast_flags_when_enabled(tmp_path: Path):
     _require_scanpy()
     output_dir = tmp_path / "demo_de_commands"
     result = _run_cmd(
@@ -553,25 +607,25 @@ def test_commands_sh_contains_de_flags_when_enabled(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
-            "--de-group1",
+            "--contrast-group1",
             "cluster_0",
-            "--de-group2",
+            "--contrast-group2",
             "cluster_1",
-            "--de-top-genes",
+            "--contrast-top-genes",
             "9",
-            "--de-volcano",
+            "--contrast-volcano",
         ]
     )
     assert result.returncode == 0, result.stderr
 
     commands_sh = (output_dir / "reproducibility" / "commands.sh").read_text()
-    assert "--de-groupby demo_truth" in commands_sh
-    assert "--de-group1 cluster_0" in commands_sh
-    assert "--de-group2 cluster_1" in commands_sh
-    assert "--de-top-genes 9" in commands_sh
-    assert "--de-volcano" in commands_sh
+    assert "--contrast-groupby demo_truth" in commands_sh
+    assert "--contrast-group1 cluster_0" in commands_sh
+    assert "--contrast-group2 cluster_1" in commands_sh
+    assert "--contrast-top-genes 9" in commands_sh
+    assert "--contrast-volcano" in commands_sh
 
 
 def test_demo_doublet_detection_outputs_summary_metadata(tmp_path: Path):
@@ -610,17 +664,17 @@ def test_doublet_and_de_can_run_together(tmp_path: Path):
             str(output_dir),
             "--doublet-method",
             "scrublet",
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
-            "--de-group1",
+            "--contrast-group1",
             "cluster_0",
-            "--de-group2",
+            "--contrast-group2",
             "cluster_1",
         ]
     )
     assert result.returncode == 0, result.stderr
     assert (output_dir / "tables" / "doublet_summary.csv").exists()
-    assert (output_dir / "tables" / "de_full.csv").exists()
+    assert (output_dir / "tables" / "contrastive_markers_full.csv").exists()
 
 
 def test_de_requires_all_group_flags(tmp_path: Path):
@@ -631,20 +685,20 @@ def test_de_requires_all_group_flags(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
         ]
     )
     assert result.returncode != 0
-    assert "DE requires --de-groupby, --de-group1, and --de-group2 together" in result.stderr
+    assert "Contrastive marker analysis requires --contrast-groupby" in result.stderr
 
 
 def test_de_volcano_requires_de_flags(tmp_path: Path):
     _require_scanpy()
     output_dir = tmp_path / "de_volcano_requires_flags"
-    result = _run_cmd(["--demo", "--output", str(output_dir), "--de-volcano"])
+    result = _run_cmd(["--demo", "--output", str(output_dir), "--contrast-volcano"])
     assert result.returncode != 0
-    assert "--de-volcano requires --de-groupby, --de-group1, and --de-group2" in result.stderr
+    assert "--contrast-volcano requires --contrast-groupby" in result.stderr
 
 
 def test_de_groupby_missing_rejected(tmp_path: Path):
@@ -655,16 +709,16 @@ def test_de_groupby_missing_rejected(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "not_a_column",
-            "--de-group1",
+            "--contrast-group1",
             "cluster_0",
-            "--de-group2",
+            "--contrast-group2",
             "cluster_1",
         ]
     )
     assert result.returncode != 0
-    assert "DE groupby column not found" in result.stderr
+    assert "Contrastive marker groupby column not found" in result.stderr
 
 
 def test_de_groups_missing_rejected(tmp_path: Path):
@@ -675,16 +729,16 @@ def test_de_groups_missing_rejected(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
-            "--de-group1",
+            "--contrast-group1",
             "missing_a",
-            "--de-group2",
+            "--contrast-group2",
             "missing_b",
         ]
     )
     assert result.returncode != 0
-    assert "DE group value(s) not found" in result.stderr
+    assert "Contrastive marker group value(s) not found" in result.stderr
 
 
 def test_clawbio_run_scrna_accepts_whitelisted_tuning_flags(tmp_path: Path):
@@ -744,7 +798,7 @@ def test_clawbio_run_scrna_accepts_whitelisted_feature_flags(tmp_path: Path):
     assert (output_dir / "tables" / "doublet_summary.csv").exists()
 
 
-def test_clawbio_run_scrna_accepts_whitelisted_de_flags(tmp_path: Path):
+def test_clawbio_run_scrna_accepts_whitelisted_contrast_flags(tmp_path: Path):
     _require_scanpy()
     output_dir = tmp_path / "clawbio_scrna_de_output"
 
@@ -753,21 +807,21 @@ def test_clawbio_run_scrna_accepts_whitelisted_de_flags(tmp_path: Path):
             "--demo",
             "--output",
             str(output_dir),
-            "--de-groupby",
+            "--contrast-groupby",
             "demo_truth",
-            "--de-group1",
+            "--contrast-group1",
             "cluster_0",
-            "--de-group2",
+            "--contrast-group2",
             "cluster_1",
-            "--de-top-genes",
+            "--contrast-top-genes",
             "8",
-            "--de-volcano",
+            "--contrast-volcano",
         ]
     )
     assert result.returncode == 0, result.stderr
-    assert (output_dir / "tables" / "de_full.csv").exists()
-    assert (output_dir / "tables" / "de_top.csv").exists()
-    assert (output_dir / "figures" / "de_volcano.png").exists()
+    assert (output_dir / "tables" / "contrastive_markers_full.csv").exists()
+    assert (output_dir / "tables" / "contrastive_markers_top.csv").exists()
+    assert (output_dir / "figures" / "contrastive_markers_volcano.png").exists()
 
 
 def test_doublet_missing_dependency_message(monkeypatch: pytest.MonkeyPatch):
@@ -942,3 +996,171 @@ def test_orchestrator_no_rds_extension_route():
     assert module.detect_skill_from_file(Path("x.h5ad")) == "scrna-orchestrator"
     assert module.detect_skill_from_file(Path("matrix.mtx")) == "scrna-orchestrator"
     assert module.detect_skill_from_file(Path("matrix.mtx.gz")) == "scrna-orchestrator"
+
+
+def test_10x_directory_input_runs(tmp_path: Path):
+    _require_scanpy()
+    input_dir = _build_10x_mtx_input(tmp_path / "tenx_dir")
+    output_dir = tmp_path / "tenx_output"
+
+    result = _run_cmd(
+        [
+            "--input",
+            str(input_dir),
+            "--output",
+            str(output_dir),
+            "--min-genes",
+            "1",
+            "--min-cells",
+            "1",
+            "--n-top-hvg",
+            "8",
+            "--n-neighbors",
+            "4",
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads((output_dir / "result.json").read_text())
+    assert payload["data"]["input"]["format"] == "10x_mtx"
+
+
+def test_integrated_latent_input_auto_mode_runs(tmp_path: Path):
+    _require_scanpy()
+    input_path = tmp_path / "integrated.h5ad"
+    output_dir = tmp_path / "latent_auto_output"
+    _build_integrated_latent_input(input_path)
+
+    result = _run_cmd(
+        [
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir),
+            "--min-genes",
+            "1",
+            "--min-cells",
+            "1",
+            "--n-top-hvg",
+            "4",
+            "--n-neighbors",
+            "4",
+            "--contrast-groupby",
+            "batch",
+            "--contrast-group1",
+            "batch_0",
+            "--contrast-group2",
+            "batch_1",
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads((output_dir / "result.json").read_text())
+    assert payload["summary"]["graph_basis"] == "X_scvi"
+    assert payload["summary"]["use_rep_resolved"] == "X_scvi"
+    assert payload["summary"]["counts_layer"] == "counts"
+    assert payload["data"]["contrastive_markers"]["enabled"] is True
+    assert (output_dir / "tables" / "contrastive_markers_full.csv").exists()
+
+
+def test_integrated_latent_input_explicit_and_none_modes(tmp_path: Path):
+    _require_scanpy()
+    input_path = tmp_path / "integrated.h5ad"
+    output_dir_explicit = tmp_path / "latent_explicit_output"
+    output_dir_none = tmp_path / "latent_none_output"
+    _build_integrated_latent_input(input_path)
+
+    explicit_result = _run_cmd(
+        [
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir_explicit),
+            "--use-rep",
+            "X_scvi",
+            "--min-genes",
+            "1",
+            "--min-cells",
+            "1",
+            "--n-top-hvg",
+            "4",
+            "--n-neighbors",
+            "4",
+        ]
+    )
+    assert explicit_result.returncode == 0, explicit_result.stderr
+    explicit_payload = json.loads((output_dir_explicit / "result.json").read_text())
+    assert explicit_payload["summary"]["graph_basis"] == "X_scvi"
+
+    none_result = _run_cmd(
+        [
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_dir_none),
+            "--use-rep",
+            "none",
+            "--min-genes",
+            "1",
+            "--min-cells",
+            "1",
+            "--n-top-hvg",
+            "4",
+            "--n-neighbors",
+            "4",
+        ]
+    )
+    assert none_result.returncode == 0, none_result.stderr
+    none_payload = json.loads((output_dir_none / "result.json").read_text())
+    assert none_payload["summary"]["graph_basis"] == "pca"
+    assert none_payload["summary"]["use_rep_resolved"] == ""
+
+
+def test_matrix_mtx_gz_input_runs(tmp_path: Path):
+    _require_scanpy()
+    matrix_path = _build_10x_mtx_input(tmp_path / "tenx_gz", compressed=True)
+    output_dir = tmp_path / "tenx_gz_output"
+
+    result = _run_cmd(
+        [
+            "--input",
+            str(matrix_path),
+            "--output",
+            str(output_dir),
+            "--min-genes",
+            "1",
+            "--min-cells",
+            "1",
+            "--n-top-hvg",
+            "8",
+            "--n-neighbors",
+            "4",
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    checksums = (output_dir / "reproducibility" / "checksums.sha256").read_text()
+    assert "barcodes.tsv.gz" in checksums
+
+
+def test_legacy_de_flags_still_work_for_contrastive_markers(tmp_path: Path):
+    _require_scanpy()
+    output_dir = tmp_path / "legacy_de_alias_output"
+    result = _run_cmd(
+        [
+            "--demo",
+            "--output",
+            str(output_dir),
+            "--de-groupby",
+            "demo_truth",
+            "--de-group1",
+            "cluster_0",
+            "--de-group2",
+            "cluster_1",
+            "--de-top-genes",
+            "6",
+            "--de-volcano",
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads((output_dir / "result.json").read_text())
+    assert payload["data"]["contrastive_markers"]["enabled"] is True
+    assert payload["data"]["contrastive_markers"]["used_legacy_flags"] is True
+    assert payload["data"]["de"]["used_legacy_flags"] is True

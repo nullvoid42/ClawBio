@@ -297,7 +297,7 @@ SKILLS = {
     "scrna": {
         "script": SKILLS_DIR / "scrna-orchestrator" / "scrna_orchestrator.py",
         "demo_args": ["--demo"],
-        "description": "scRNA Orchestrator (Scanpy QC, doublet detection, clustering, annotation, optional two-group DE + volcano)",
+        "description": "scRNA Orchestrator (Scanpy QC, doublet detection, clustering, annotation, optional latent downstream mode, contrastive markers)",
         "allowed_extra_flags": {
             "--min-genes",
             "--min-cells",
@@ -305,9 +305,15 @@ SKILLS = {
             "--n-top-hvg",
             "--n-pcs",
             "--n-neighbors",
+            "--use-rep",
             "--leiden-resolution",
             "--random-state",
             "--top-markers",
+            "--contrast-groupby",
+            "--contrast-group1",
+            "--contrast-group2",
+            "--contrast-top-genes",
+            "--contrast-volcano",
             "--de-groupby",
             "--de-group1",
             "--de-group2",
@@ -322,7 +328,7 @@ SKILLS = {
     "scrna-embedding": {
         "script": SKILLS_DIR / "scrna-embedding" / "scrna_embedding.py",
         "demo_args": ["--demo"],
-        "description": "scRNA Embedding (scVI latent embedding, optional batch integration, clustering, markers, integrated h5ad export)",
+        "description": "scRNA Embedding (scVI latent embedding, optional batch integration, stable integrated h5ad export)",
         "allowed_extra_flags": {
             "--method",
             "--layer",
@@ -397,6 +403,20 @@ SKILLS = {
         "no_input_required": True,
         "accepts_genotypes": False,
     },
+    "illumina": {
+        "script": SKILLS_DIR / "illumina-bridge" / "illumina_bridge.py",
+        "demo_args": ["--demo"],
+        "description": "Illumina / DRAGEN bundle import and metadata normalization",
+        "allowed_extra_flags": {
+            "--vcf",
+            "--qc",
+            "--sample-sheet",
+            "--metadata-provider",
+            "--ica-project-id",
+            "--ica-run-id",
+        },
+        "accepts_genotypes": False,
+    },
     "data-extract": {
         "script": SKILLS_DIR / "data-extractor" / "data_extractor.py",
         "demo_args": ["--demo"],
@@ -434,6 +454,20 @@ SKILLS = {
             "--imputer-strategy",
             "--skip-epicv2-aggregation",
             "--verbose",
+    "diffviz": {
+        "script": SKILLS_DIR / "diff-visualizer" / "diff_visualizer.py",
+        "demo_args": ["--demo"],
+        "description": "Differential expression visualizer (bulk RNA-seq + scRNA downstream figure/report pack)",
+        "allowed_extra_flags": {
+            "--mode",
+            "--counts",
+            "--metadata",
+            "--adata",
+            "--top-genes",
+            "--label-top",
+            "--padj-threshold",
+            "--lfc-threshold",
+            "--min-basemean",
         },
         "accepts_genotypes": False,
     },
@@ -850,6 +884,45 @@ def main():
     run_parser.add_argument("--imputer-strategy", default=None, help="Imputer strategy for methylation skill")
     run_parser.add_argument("--skip-epicv2-aggregation", action="store_true", help="Skip EPICv2 probe aggregation")
     run_parser.add_argument("--verbose", action="store_true", help="Verbose output for skill backends")
+    run_parser.add_argument("--vcf", default=None, help="Explicit VCF override for illumina skill")
+    run_parser.add_argument("--qc", default=None, help="Explicit QC metrics override for illumina skill")
+    run_parser.add_argument("--sample-sheet", default=None, help="Explicit SampleSheet override for illumina skill")
+    run_parser.add_argument(
+        "--metadata-provider",
+        default=None,
+        help="Optional metadata provider for illumina skill (none or ica)",
+    )
+    run_parser.add_argument("--ica-project-id", default=None, help="ICA project ID for illumina skill")
+    run_parser.add_argument("--ica-run-id", default=None, help="ICA analysis/run ID for illumina skill")
+    run_parser.add_argument("--counts", default=None, help="Counts matrix for rnaseq/diffviz bulk workflows")
+    run_parser.add_argument("--metadata", default=None, help="Sample metadata for rnaseq/diffviz bulk workflows")
+    run_parser.add_argument("--formula", default=None, help="Design formula for rnaseq skill")
+    run_parser.add_argument("--contrast", default=None, help="Contrast for rnaseq skill: factor,numerator,denominator")
+    run_parser.add_argument("--backend", default=None, help="Backend for rnaseq skill (auto|pydeseq2|simple)")
+    run_parser.add_argument("--min-count", type=int, default=None, help="Minimum count threshold for rnaseq skill")
+    run_parser.add_argument("--min-samples", type=int, default=None, help="Minimum samples threshold for rnaseq skill")
+    run_parser.add_argument("--mode", default=None, help="Mode for diffviz skill (auto|bulk|scrna)")
+    run_parser.add_argument("--adata", default=None, help="AnnData input for enhanced diffviz scRNA plots")
+    run_parser.add_argument("--top-genes", type=int, default=None, help="Top genes/markers to display in diffviz")
+    run_parser.add_argument("--label-top", type=int, default=None, help="Label top hits in diffviz plots")
+    run_parser.add_argument(
+        "--padj-threshold",
+        type=float,
+        default=None,
+        help="Adjusted p-value threshold for diffviz significance highlighting",
+    )
+    run_parser.add_argument(
+        "--lfc-threshold",
+        type=float,
+        default=None,
+        help="Absolute log fold-change threshold for diffviz significance highlighting",
+    )
+    run_parser.add_argument(
+        "--min-basemean",
+        type=float,
+        default=None,
+        help="Minimum baseMean retained in diffviz bulk display plots/tables",
+    )
     run_parser.add_argument("--method", default=None, help="Embedding backend (scrna-embedding skill)")
     run_parser.add_argument("--layer", default=None, help="Raw-count layer for `.h5ad` input (scrna-embedding skill)")
     run_parser.add_argument("--batch-key", default=None, help="obs batch column for integration (scrna-embedding skill)")
@@ -877,6 +950,11 @@ def main():
         help="Neighbors for graph construction (scrna/scrna-embedding skill)",
     )
     run_parser.add_argument(
+        "--use-rep",
+        default=None,
+        help="Graph representation key or mode such as `auto`, `none`, or `X_scvi` (scrna skill)",
+    )
+    run_parser.add_argument(
         "--leiden-resolution",
         type=float,
         default=None,
@@ -894,19 +972,45 @@ def main():
         default=None,
         help="Training accelerator (scrna-embedding skill)",
     )
-    run_parser.add_argument("--de-groupby", default=None, help="obs column for DE (scrna skill)")
-    run_parser.add_argument("--de-group1", default=None, help="Group 1 value for DE (scrna skill)")
-    run_parser.add_argument("--de-group2", default=None, help="Group 2 reference value for DE (scrna skill)")
+    run_parser.add_argument(
+        "--contrast-groupby",
+        default=None,
+        help="obs column for contrastive marker analysis (scrna skill)",
+    )
+    run_parser.add_argument(
+        "--contrast-group1",
+        default=None,
+        help="Group 1 value for contrastive marker analysis (scrna skill)",
+    )
+    run_parser.add_argument(
+        "--contrast-group2",
+        default=None,
+        help="Group 2 reference value for contrastive marker analysis (scrna skill)",
+    )
+    run_parser.add_argument("--de-groupby", default=None, help="Deprecated alias for --contrast-groupby (scrna skill)")
+    run_parser.add_argument("--de-group1", default=None, help="Deprecated alias for --contrast-group1 (scrna skill)")
+    run_parser.add_argument("--de-group2", default=None, help="Deprecated alias for --contrast-group2 (scrna skill)")
+    run_parser.add_argument(
+        "--contrast-top-genes",
+        type=int,
+        default=None,
+        help="Top contrastive marker genes in summary table (scrna skill)",
+    )
     run_parser.add_argument(
         "--de-top-genes",
         type=int,
         default=None,
-        help="Top DE genes in summary table (scrna skill)",
+        help="Deprecated alias for --contrast-top-genes (scrna skill)",
+    )
+    run_parser.add_argument(
+        "--contrast-volcano",
+        action="store_true",
+        help="Generate contrastive markers volcano plot (scrna skill)",
     )
     run_parser.add_argument(
         "--de-volcano",
         action="store_true",
-        help="Generate DE volcano plot (scrna skill)",
+        help="Deprecated alias for --contrast-volcano (scrna skill)",
     )
     run_parser.add_argument(
         "--doublet-method",
@@ -975,6 +1079,46 @@ def main():
             extra.append("--skip-epicv2-aggregation")
         if getattr(args, "verbose", False):
             extra.append("--verbose")
+        if getattr(args, "vcf", None):
+            extra.extend(["--vcf", args.vcf])
+        if getattr(args, "qc", None):
+            extra.extend(["--qc", args.qc])
+        if getattr(args, "sample_sheet", None):
+            extra.extend(["--sample-sheet", args.sample_sheet])
+        if getattr(args, "metadata_provider", None):
+            extra.extend(["--metadata-provider", args.metadata_provider])
+        if getattr(args, "ica_project_id", None):
+            extra.extend(["--ica-project-id", args.ica_project_id])
+        if getattr(args, "ica_run_id", None):
+            extra.extend(["--ica-run-id", args.ica_run_id])
+        if getattr(args, "counts", None):
+            extra.extend(["--counts", args.counts])
+        if getattr(args, "metadata", None):
+            extra.extend(["--metadata", args.metadata])
+        if getattr(args, "formula", None):
+            extra.extend(["--formula", args.formula])
+        if getattr(args, "contrast", None):
+            extra.extend(["--contrast", args.contrast])
+        if getattr(args, "backend", None):
+            extra.extend(["--backend", args.backend])
+        if getattr(args, "min_count", None) is not None:
+            extra.extend(["--min-count", str(args.min_count)])
+        if getattr(args, "min_samples", None) is not None:
+            extra.extend(["--min-samples", str(args.min_samples)])
+        if getattr(args, "mode", None):
+            extra.extend(["--mode", args.mode])
+        if getattr(args, "adata", None):
+            extra.extend(["--adata", args.adata])
+        if getattr(args, "top_genes", None) is not None:
+            extra.extend(["--top-genes", str(args.top_genes)])
+        if getattr(args, "label_top", None) is not None:
+            extra.extend(["--label-top", str(args.label_top)])
+        if getattr(args, "padj_threshold", None) is not None:
+            extra.extend(["--padj-threshold", str(args.padj_threshold)])
+        if getattr(args, "lfc_threshold", None) is not None:
+            extra.extend(["--lfc-threshold", str(args.lfc_threshold)])
+        if getattr(args, "min_basemean", None) is not None:
+            extra.extend(["--min-basemean", str(args.min_basemean)])
         if getattr(args, "method", None):
             extra.extend(["--method", args.method])
         if getattr(args, "layer", None):
@@ -997,6 +1141,8 @@ def main():
             extra.extend(["--max-epochs", str(args.max_epochs)])
         if getattr(args, "n_neighbors", None) is not None:
             extra.extend(["--n-neighbors", str(args.n_neighbors)])
+        if getattr(args, "use_rep", None):
+            extra.extend(["--use-rep", args.use_rep])
         if getattr(args, "leiden_resolution", None) is not None:
             extra.extend(["--leiden-resolution", str(args.leiden_resolution)])
         if getattr(args, "random_state", None) is not None:
@@ -1005,6 +1151,16 @@ def main():
             extra.extend(["--top-markers", str(args.top_markers)])
         if getattr(args, "accelerator", None):
             extra.extend(["--accelerator", args.accelerator])
+        if getattr(args, "contrast_groupby", None):
+            extra.extend(["--contrast-groupby", args.contrast_groupby])
+        if getattr(args, "contrast_group1", None):
+            extra.extend(["--contrast-group1", args.contrast_group1])
+        if getattr(args, "contrast_group2", None):
+            extra.extend(["--contrast-group2", args.contrast_group2])
+        if getattr(args, "contrast_top_genes", None) is not None:
+            extra.extend(["--contrast-top-genes", str(args.contrast_top_genes)])
+        if getattr(args, "contrast_volcano", False):
+            extra.append("--contrast-volcano")
         if getattr(args, "de_groupby", None):
             extra.extend(["--de-groupby", args.de_groupby])
         if getattr(args, "de_group1", None):

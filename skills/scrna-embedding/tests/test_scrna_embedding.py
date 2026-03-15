@@ -176,11 +176,15 @@ def test_demo_end_to_end_outputs(tmp_path: Path):
 
     integrated = read_h5ad(output_dir / "integrated.h5ad")
     assert "X_scvi" in integrated.obsm
+    assert "counts" in integrated.layers
+    assert "clawbio_scrna_embedding" in integrated.uns
+    assert integrated.uns["clawbio_scrna_embedding"]["preferred_rep"] == "X_scvi"
     latent_table = pd.read_csv(output_dir / "tables" / "latent_embeddings.csv")
     assert "demo_truth" in latent_table.columns
 
     report_text = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "Colored by: `demo_truth`" in report_text
+    assert "--use-rep X_scvi" in report_text
 
 
 def test_demo_batch_outputs_and_result_metadata(tmp_path: Path):
@@ -210,7 +214,10 @@ def test_demo_batch_outputs_and_result_metadata(tmp_path: Path):
     assert payload["summary"]["batch_key"] == "demo_batch"
     assert payload["summary"]["accelerator_used"] == "cpu"
     assert payload["summary"]["latent_plot_color_by"] == "demo_truth"
+    assert payload["summary"]["downstream_scrna_command"].endswith("--use-rep X_scvi")
     assert payload["data"]["integrated_h5ad"] == "integrated.h5ad"
+    assert payload["data"]["counts_layer"] == "counts"
+    assert payload["data"]["artifact_metadata_key"] == "clawbio_scrna_embedding"
     assert "umap_scvi_batch.png" in payload["data"]["figures"]
     assert "latent_embeddings.csv" in payload["data"]["tables"]
     assert "batch_mixing_metrics.csv" in payload["data"]["tables"]
@@ -416,3 +423,7 @@ def test_orchestrator_routes_embedding_keywords_to_new_skill():
     assert module.detect_skill_from_query("Run scvi batch correction on my h5ad") == "scrna-embedding"
     assert module.detect_skill_from_query("Build a latent embedding for this single-cell dataset") == "scrna-embedding"
     assert module.detect_skill_from_query("Cluster my h5ad and find marker genes") == "scrna-orchestrator"
+    assert module.detect_skill_from_query("Use integrated.h5ad with X_scvi to find markers") == "scrna-orchestrator"
+    skill, hint = module.detect_skill_with_hint_from_query("Run scvi and then find markers on my h5ad")
+    assert skill == "scrna-embedding"
+    assert "two-step advanced scRNA workflow" in hint

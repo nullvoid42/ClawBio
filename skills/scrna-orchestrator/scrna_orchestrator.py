@@ -15,8 +15,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import gzip
-import hashlib
 import json
 import os
 import shlex
@@ -38,7 +36,12 @@ from clawbio.common.report import (
     generate_report_header,
     write_result_json,
 )
-from clawbio.common.scrna_io import compute_input_checksum, load_count_adata
+from clawbio.common.scrna_io import (
+    compute_input_checksum,
+    detect_processed_input_reason as shared_detect_processed_input_reason,
+    load_10x_mtx_data,
+    resolve_input_source,
+)
 
 DISCLAIMER = (
     "ClawBio is a research and educational tool. It is not a medical device "
@@ -47,6 +50,9 @@ DISCLAIMER = (
 )
 DEMO_SOURCE_ENV = "CLAWBIO_SCRNA_DEMO_SOURCE"
 DEFAULT_CELLTYPIST_MODEL = "Immune_All_Low"
+EMBEDDING_ARTIFACT_KEY = "clawbio_scrna_embedding"
+DEFAULT_LATENT_REP = "X_scvi"
+DEFAULT_COUNTS_LAYER = "counts"
 
 
 def _import_scanpy():
@@ -153,66 +159,158 @@ def load_demo_adata(random_state: int, demo_source_policy: str | None = None):
         return build_demo_adata(random_state), "synthetic_fallback"
 
 
-def _sample_expression_values(x, max_values: int = 200_000) -> np.ndarray:
-    """Sample expression values from dense/sparse matrices without densifying sparse input."""
-    try:
-        from scipy import sparse  # type: ignore
-    except Exception:
-        sparse = None
-
-    if sparse is not None and sparse.issparse(x):
-        values = np.asarray(x.data).ravel()
-    else:
-        values = np.asarray(x).ravel()
-
-    if values.size > max_values:
-        step = max(1, values.size // max_values)
-        values = values[::step][:max_values]
-
-    return values.astype(np.float64, copy=False)
-
-
 def detect_processed_input_reason(adata) -> str | None:
     """Detect whether input looks preprocessed (log-normalized/scaled) instead of raw counts."""
-    values = _sample_expression_values(adata.X)
-    if values.size == 0:
-        return None
-
-    finite = values[np.isfinite(values)]
-    if finite.size == 0:
-        return None
-
-    uns_markers = {
-        "neighbors",
-        "pca",
-        "umap",
-        "rank_genes_groups",
-        "draw_graph",
-        "louvain",
-    }
-    uns_hits = sorted(key for key in uns_markers if key in adata.uns)
-    has_negative = bool(np.any(finite < -1e-8))
-    frac_non_integer = float(np.mean(np.abs(finite - np.rint(finite)) > 1e-6))
-    max_val = float(np.max(finite))
-
-    reason: str | None = None
-    if has_negative:
-        reason = "Detected negative expression values, indicating scaled/transformed input."
-    elif frac_non_integer > 0.20 and (max_val <= 50.0 or bool(uns_hits)):
-        reason = (
-            "Detected mostly non-integer expression values that look like normalized/log-transformed input."
-        )
-
-    if reason is None:
-        return None
-
-    if uns_hits:
-        reason += f" Found processed-analysis metadata in adata.uns: {', '.join(uns_hits)}."
-    reason += (
-        " This skill expects raw-count single-cell input. `pbmc3k_processed` is not supported; "
-        "use raw counts (e.g., `scanpy.datasets.pbmc3k()`)."
+    return shared_detect_processed_input_reason(
+        adata,
+        expected_input="raw-count .h5ad or 10x single-cell input",
     )
-    return reason
+
+
+def _copy_matrix(matrix):
+    """Copy dense/sparse matrices when possible."""
+    return matrix.copy() if hasattr(matrix, "copy") else matrix
+
+
+def get_embedding_contract(adata) -> dict[str, str]:
+    """Return the downstream latent artifact contract when present."""
+    contract: dict[str, str] = {}
+    raw_contract = adata.uns.get(EMBEDDING_ARTIFACT_KEY, {})
+    if isinstance(raw_contract, dict):
+        contract = {str(key): str(value) for key, value in raw_contract.items() if isinstance(key, str)}
+
+    rep_key = contract.get("preferred_rep", DEFAULT_LATENT_REP)
+    counts_layer = contract.get("counts_layer", DEFAULT_COUNTS_LAYER)
+    if rep_key in getattr(adata, "obsm", {}):
+        contract["preferred_rep"] = rep_key
+    if counts_layer in getattr(adata, "layers", {}):
+        contract["counts_layer"] = counts_layer
+
+    if "preferred_rep" not in contract and DEFAULT_LATENT_REP in getattr(adata, "obsm", {}):
+        contract["preferred_rep"] = DEFAULT_LATENT_REP
+    if "counts_layer" not in contract and DEFAULT_COUNTS_LAYER in getattr(adata, "layers", {}):
+        contract["counts_layer"] = DEFAULT_COUNTS_LAYER
+
+    return contract
+
+
+def _resolve_requested_rep(adata, use_rep: str) -> str:
+    """Resolve CLI use-rep mode into an obsm key or empty string."""
+    normalized = (use_rep or "auto").strip()
+    if not normalized or normalized == "auto":
+        contract = get_embedding_contract(adata)
+        rep_key = contract.get("preferred_rep", "")
+        return rep_key if rep_key in getattr(adata, "obsm", {}) else ""
+    if normalized == "none":
+        return ""
+    if normalized not in getattr(adata, "obsm", {}):
+        raise ValueError(f"Requested latent representation not found in adata.obsm: {normalized}")
+    return normalized
+
+
+def _recover_counts_source(adata, *, expected_input: str) -> tuple[Any, str]:
+    """Return an AnnData view with raw counts restored to X when possible."""
+    counts_layer = get_embedding_contract(adata).get("counts_layer", "")
+    counts_adata = adata.copy()
+    if counts_layer:
+        counts_adata.X = _copy_matrix(adata.layers[counts_layer])
+        processed_reason = shared_detect_processed_input_reason(
+            counts_adata,
+            expected_input=expected_input,
+            layer=counts_layer,
+        )
+        if processed_reason:
+            raise ValueError(processed_reason)
+        return counts_adata, counts_layer
+
+    processed_reason = shared_detect_processed_input_reason(
+        counts_adata,
+        expected_input=expected_input,
+    )
+    if processed_reason:
+        raise ValueError(
+            "Detected a latent embedding artifact but could not recover raw counts. "
+            f"{processed_reason}"
+        )
+    return counts_adata, ""
+
+
+def resolve_contrast_request(args: argparse.Namespace) -> tuple[dict[str, str] | None, dict[str, Any]]:
+    """Resolve canonical + deprecated contrast-analysis flags."""
+    def _pick(primary: Any, legacy: Any, *, primary_name: str, legacy_name: str) -> Any:
+        if primary is not None and legacy is not None and primary != legacy:
+            raise ValueError(
+                f"Conflicting values for {primary_name} and deprecated {legacy_name}. "
+                f"Use only {primary_name}."
+            )
+        return primary if primary is not None else legacy
+
+    groupby = _pick(
+        getattr(args, "contrast_groupby", None),
+        getattr(args, "de_groupby", None),
+        primary_name="--contrast-groupby",
+        legacy_name="--de-groupby",
+    )
+    group1 = _pick(
+        getattr(args, "contrast_group1", None),
+        getattr(args, "de_group1", None),
+        primary_name="--contrast-group1",
+        legacy_name="--de-group1",
+    )
+    group2 = _pick(
+        getattr(args, "contrast_group2", None),
+        getattr(args, "de_group2", None),
+        primary_name="--contrast-group2",
+        legacy_name="--de-group2",
+    )
+    top_genes = _pick(
+        getattr(args, "contrast_top_genes", None),
+        getattr(args, "de_top_genes", None),
+        primary_name="--contrast-top-genes",
+        legacy_name="--de-top-genes",
+    )
+    volcano = bool(getattr(args, "contrast_volcano", False) or getattr(args, "de_volcano", False))
+    used_legacy_flags = any(
+        getattr(args, attr, None) is not None
+        for attr in ("de_groupby", "de_group1", "de_group2", "de_top_genes")
+    ) or bool(getattr(args, "de_volcano", False))
+
+    if top_genes is None:
+        top_genes = 50
+
+    provided = {
+        "--contrast-groupby": groupby,
+        "--contrast-group1": group1,
+        "--contrast-group2": group2,
+    }
+    provided_count = sum(1 for value in provided.values() if value)
+    if provided_count == 0:
+        if volcano:
+            raise ValueError(
+                "--contrast-volcano requires --contrast-groupby, --contrast-group1, and --contrast-group2."
+            )
+        return None, {"top_genes": int(top_genes), "volcano": volcano, "used_legacy_flags": used_legacy_flags}
+    if provided_count != 3:
+        missing = [flag for flag, value in provided.items() if not value]
+        raise ValueError(
+            "Contrastive marker analysis requires --contrast-groupby, "
+            "--contrast-group1, and --contrast-group2 together. "
+            f"Missing: {', '.join(missing)}."
+        )
+    if int(top_genes) < 1:
+        raise ValueError("--contrast-top-genes must be >= 1.")
+
+    request = {
+        "groupby": str(groupby),
+        "group1": str(group1),
+        "group2": str(group2),
+    }
+    extra = {
+        "top_genes": int(top_genes),
+        "volcano": volcano,
+        "used_legacy_flags": used_legacy_flags,
+    }
+    return request, extra
 
 
 def _cluster_sort_key(cluster: str) -> tuple[int, Any]:
@@ -253,211 +351,70 @@ def resolve_celltypist_model_path(celltypist, model_name: str) -> Path:
     )
 
 
-def _is_h5ad_input_path(path: Path) -> bool:
-    """Return True when the input points to an AnnData file."""
-    return path.is_file() and path.suffix.lower() == ".h5ad"
-
-
-def _is_matrix_market_input_path(path: Path) -> bool:
-    """Return True when the input is a matrix.mtx or matrix.mtx.gz file."""
-    name = path.name.lower()
-    return path.is_file() and (name.endswith(".mtx") or name.endswith(".mtx.gz"))
-
-
-def resolve_10x_mtx_source(path: Path) -> dict[str, Any]:
-    """Resolve a 10x Matrix Market input from a directory or matrix file."""
-    source_dir = path if path.is_dir() else path.parent
-    if not source_dir.exists():
-        raise FileNotFoundError(f"Input path not found: {path}")
-
-    if path.is_dir():
-        matrix_candidates = sorted(
-            [
-                candidate
-                for candidate in source_dir.iterdir()
-                if candidate.is_file() and candidate.name.endswith(("matrix.mtx", "matrix.mtx.gz"))
-            ]
-        )
-        if not matrix_candidates:
-            raise ValueError(
-                "10x Matrix Market input requires a directory containing "
-                "`matrix.mtx` or `matrix.mtx.gz`."
-            )
-        if len(matrix_candidates) > 1:
-            candidate_names = ", ".join(candidate.name for candidate in matrix_candidates)
-            raise ValueError(
-                "Multiple 10x matrix files were found in the input directory. "
-                "Point `--input` to a specific `matrix.mtx` or `matrix.mtx.gz` file. "
-                f"Found: {candidate_names}"
-            )
-        matrix_path = matrix_candidates[0]
-    else:
-        if not _is_matrix_market_input_path(path):
-            raise ValueError(
-                "10x Matrix Market input must be a `matrix.mtx(.gz)` file or a directory "
-                "containing one."
-            )
-        matrix_path = path
-
-    if matrix_path.name.endswith("matrix.mtx.gz"):
-        prefix = matrix_path.name[: -len("matrix.mtx.gz")]
-        compressed = True
-        features_path = source_dir / f"{prefix}features.tsv.gz"
-        barcodes_path = source_dir / f"{prefix}barcodes.tsv.gz"
-        missing = [candidate.name for candidate in (features_path, barcodes_path) if not candidate.exists()]
-        if missing:
-            raise ValueError(
-                "Compressed 10x Matrix Market input requires matching `features.tsv.gz` "
-                f"and `barcodes.tsv.gz` files. Missing: {', '.join(missing)}"
-            )
-        input_files = [matrix_path, barcodes_path, features_path]
-        feature_table_path = features_path
-    else:
-        prefix = matrix_path.name[: -len("matrix.mtx")]
-        compressed = False
-        barcodes_path = source_dir / f"{prefix}barcodes.tsv"
-        features_path = source_dir / f"{prefix}features.tsv"
-        genes_path = source_dir / f"{prefix}genes.tsv"
-        if not barcodes_path.exists():
-            raise ValueError(
-                "Uncompressed 10x Matrix Market input requires a matching `barcodes.tsv` file."
-            )
-        if features_path.exists():
-            feature_table_path = features_path
-        elif genes_path.exists():
-            feature_table_path = genes_path
-        else:
-            raise ValueError(
-                "Uncompressed 10x Matrix Market input requires either `features.tsv` "
-                "or legacy `genes.tsv` alongside `matrix.mtx`."
-            )
-        input_files = [matrix_path, barcodes_path, feature_table_path]
-
-    return {
-        "format": "10x_mtx",
-        "reader_path": source_dir,
-        "files": input_files,
-        "compressed": compressed,
-        "prefix": prefix,
-        "matrix_path": matrix_path,
-        "barcodes_path": barcodes_path,
-        "feature_table_path": feature_table_path,
-    }
-
-
-def resolve_input_source(path: Path) -> dict[str, Any]:
-    """Resolve supported input types into a normalized metadata bundle."""
-    if not path.exists():
-        raise FileNotFoundError(f"Input path not found: {path}")
-
-    if _is_h5ad_input_path(path):
-        return {
-            "format": "h5ad",
-            "reader_path": path,
-            "files": [path],
-            "compressed": False,
-            "prefix": "",
-        }
-
-    if path.is_dir() or _is_matrix_market_input_path(path):
-        return resolve_10x_mtx_source(path)
-
-    raise ValueError(
-        "Supported inputs are raw-count `.h5ad` and 10x Matrix Market inputs "
-        "(`matrix.mtx`, `matrix.mtx.gz`, or a directory containing them). "
-        f"Received: {path.name}"
-    )
-
-
-def compute_input_checksum(input_source: dict[str, Any] | None) -> str:
-    """Compute a stable checksum for one or more input files."""
-    if input_source is None:
-        return ""
-
-    input_files = sorted((Path(path) for path in input_source["files"]), key=lambda path: path.name)
-    if len(input_files) == 1:
-        return sha256_file(input_files[0])
-
-    digest = hashlib.sha256()
-    for path in input_files:
-        digest.update(path.name.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(sha256_file(path).encode("utf-8"))
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def load_10x_mtx_data(source_info: dict[str, Any]):
-    """Load 10x Matrix Market input without depending on Scanpy's reader signature."""
-    from anndata import AnnData  # type: ignore
-    from scipy import sparse  # type: ignore
-    from scipy.io import mmread  # type: ignore
-
-    matrix_path = Path(source_info["matrix_path"])
-    barcodes_path = Path(source_info["barcodes_path"])
-    feature_table_path = Path(source_info["feature_table_path"])
-
-    if matrix_path.suffix == ".gz":
-        with gzip.open(matrix_path, "rb") as handle:
-            matrix = mmread(handle)
-    else:
-        matrix = mmread(str(matrix_path))
-
-    if sparse.issparse(matrix):
-        x = matrix.T.tocsr()
-    else:
-        x = np.asarray(matrix).T
-
-    barcodes = pd.read_csv(
-        barcodes_path,
-        header=None,
-        sep="\t",
-        compression="infer",
-    )
-    features = pd.read_csv(
-        feature_table_path,
-        header=None,
-        sep="\t",
-        compression="infer",
-    )
-
-    if features.shape[1] < 2:
-        raise ValueError(
-            "10x feature table must contain at least gene ID and gene symbol columns."
-        )
-
-    obs_names = pd.Index(barcodes.iloc[:, 0].astype(str), dtype="object")
-    obs_names.name = None
-    var_names = pd.Index(features.iloc[:, 1].astype(str), dtype="object")
-    var_names.name = None
-    obs = pd.DataFrame(index=obs_names)
-    var = pd.DataFrame(index=var_names)
-    var["gene_ids"] = features.iloc[:, 0].astype(str).to_numpy()
-    if features.shape[1] >= 3:
-        var["feature_types"] = features.iloc[:, 2].astype(str).to_numpy()
-
-    adata = AnnData(X=x, obs=obs, var=var)
-    adata.var_names_make_unique()
-    return adata
-
-
-def load_data(input_path: str | None, demo: bool, random_state: int):
-    """Load AnnData from supported inputs or build demo data."""
+def load_data(
+    input_path: str | None,
+    demo: bool,
+    random_state: int,
+    *,
+    use_rep: str = "auto",
+):
+    """Load AnnData from supported input and resolve latent downstream mode."""
     sc = _import_scanpy()
 
     if demo:
         adata, demo_source = load_demo_adata(random_state)
-        return adata, None, True, demo_source, None
+        return adata, None, True, demo_source, None, {
+            "requested_use_rep": use_rep,
+            "resolved_use_rep": "",
+            "counts_layer": "",
+            "graph_basis": "pca",
+        }
 
     if not input_path:
         raise ValueError("Provide --input <input.h5ad|matrix.mtx|10x_dir> or --demo.")
 
-    adata, input_source = load_count_adata(
-        input_path,
-        h5ad_loader=sc.read_h5ad,
+    source_info = resolve_input_source(Path(input_path))
+    if source_info["format"] == "10x_mtx":
+        if (use_rep or "auto").strip() not in {"", "auto", "none"}:
+            raise ValueError("--use-rep is only supported for `.h5ad` input.")
+        adata = load_10x_mtx_data(source_info)
+        processed_reason = shared_detect_processed_input_reason(
+            adata,
+            expected_input="raw-count .h5ad or 10x single-cell input",
+        )
+        if processed_reason:
+            raise ValueError(processed_reason)
+        source_info["selected_layer"] = ""
+        source_info["resolved_use_rep"] = ""
+        source_info["counts_layer"] = ""
+        return adata, Path(input_path), False, None, source_info, {
+            "requested_use_rep": use_rep,
+            "resolved_use_rep": "",
+            "counts_layer": "",
+            "graph_basis": "pca",
+        }
+
+    adata_loaded = sc.read_h5ad(Path(source_info["input_path"]))
+    resolved_use_rep = _resolve_requested_rep(adata_loaded, use_rep)
+    counts_adata, counts_layer = _recover_counts_source(
+        adata_loaded,
         expected_input="raw-count .h5ad or 10x single-cell input",
     )
-    return adata, Path(input_path), False, None, input_source
+
+    if resolved_use_rep and resolved_use_rep not in counts_adata.obsm:
+        raise ValueError(
+            f"Requested latent representation was not preserved after counts recovery: {resolved_use_rep}"
+        )
+
+    source_info["selected_layer"] = counts_layer
+    source_info["resolved_use_rep"] = resolved_use_rep
+    source_info["counts_layer"] = counts_layer
+    return counts_adata, Path(input_path), False, None, source_info, {
+        "requested_use_rep": use_rep,
+        "resolved_use_rep": resolved_use_rep,
+        "counts_layer": counts_layer,
+        "graph_basis": resolved_use_rep or "pca",
+    }
 
 
 def qc_filter(
@@ -573,21 +530,29 @@ def run_embedding_cluster(
     n_neighbors: int,
     leiden_resolution: float,
     random_state: int,
+    *,
+    use_rep: str = "",
 ):
-    """Compute PCA, graph neighbors, UMAP, and Leiden clusters."""
+    """Compute graph neighbors, UMAP, and Leiden clusters from PCA or a latent rep."""
     sc = _import_scanpy()
 
     adata = adata.copy()
-    sc.pp.scale(adata, max_value=10)
+    if use_rep:
+        if use_rep not in adata.obsm:
+            raise ValueError(f"Requested latent representation not found in adata.obsm: {use_rep}")
+        sc.pp.neighbors(adata, n_neighbors=n_neighbors, use_rep=use_rep)
+        n_pcs_eff = 0
+    else:
+        sc.pp.scale(adata, max_value=10)
 
-    n_pcs_eff = min(n_pcs, adata.n_obs - 1, adata.n_vars - 1)
-    if n_pcs_eff < 1:
-        raise ValueError(
-            "PCA requires at least 2 cells and 2 genes after QC/HVG selection. "
-            f"Got n_obs={adata.n_obs}, n_vars={adata.n_vars}."
-        )
-    sc.tl.pca(adata, n_comps=n_pcs_eff, random_state=random_state, svd_solver="arpack")
-    sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs_eff)
+        n_pcs_eff = min(n_pcs, adata.n_obs - 1, adata.n_vars - 1)
+        if n_pcs_eff < 1:
+            raise ValueError(
+                "PCA requires at least 2 cells and 2 genes after QC/HVG selection. "
+                f"Got n_obs={adata.n_obs}, n_vars={adata.n_vars}."
+            )
+        sc.tl.pca(adata, n_comps=n_pcs_eff, random_state=random_state, svd_solver="arpack")
+        sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs_eff)
     sc.tl.umap(adata, random_state=random_state)
     sc.tl.leiden(adata, resolution=leiden_resolution, random_state=random_state)
 
@@ -623,31 +588,7 @@ def run_markers(adata, top_markers: int = 10):
     return adata, markers_all, markers_top
 
 
-def resolve_de_request(args: argparse.Namespace) -> dict[str, str] | None:
-    """Validate DE arguments and return the request when enabled."""
-    provided = {
-        "--de-groupby": args.de_groupby,
-        "--de-group1": args.de_group1,
-        "--de-group2": args.de_group2,
-    }
-    provided_count = sum(1 for value in provided.values() if value)
-    if provided_count == 0:
-        return None
-    if provided_count != 3:
-        missing = [flag for flag, value in provided.items() if not value]
-        raise ValueError(
-            "DE requires --de-groupby, --de-group1, and --de-group2 together. "
-            f"Missing: {', '.join(missing)}."
-        )
-
-    return {
-        "groupby": str(args.de_groupby),
-        "group1": str(args.de_group1),
-        "group2": str(args.de_group2),
-    }
-
-
-def run_two_group_de(
+def run_contrastive_markers(
     adata,
     *,
     groupby: str,
@@ -655,16 +596,16 @@ def run_two_group_de(
     group2: str,
     top_genes: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Run two-group DE with Wilcoxon and return full/top tables plus summary."""
+    """Run two-group contrastive markers with Wilcoxon and return full/top tables plus summary."""
     sc = _import_scanpy()
 
     if group1 == group2:
-        raise ValueError("--de-group1 and --de-group2 must be different values.")
+        raise ValueError("--contrast-group1 and --contrast-group2 must be different values.")
 
     if groupby not in adata.obs.columns:
         available_cols = ", ".join(sorted(map(str, adata.obs.columns.tolist())))
         raise ValueError(
-            f"DE groupby column not found in adata.obs: {groupby}. "
+            f"Contrastive marker groupby column not found in adata.obs: {groupby}. "
             f"Available columns: {available_cols}."
         )
 
@@ -673,14 +614,14 @@ def run_two_group_de(
     missing_groups = [g for g in (group1, group2) if g not in available_groups]
     if missing_groups:
         raise ValueError(
-            f"DE group value(s) not found in {groupby}: {', '.join(missing_groups)}. "
+            f"Contrastive marker group value(s) not found in {groupby}: {', '.join(missing_groups)}. "
             f"Available groups: {', '.join(available_groups)}."
         )
 
     mask = groups.isin([group1, group2]).to_numpy()
     if int(mask.sum()) < 2:
         raise ValueError(
-            f"DE requires at least 2 cells across {group1} and {group2} in {groupby}."
+            f"Contrastive marker analysis requires at least 2 cells across {group1} and {group2} in {groupby}."
         )
 
     adata_de = adata[mask].copy()
@@ -695,7 +636,8 @@ def run_two_group_de(
     n_group2 = int(sum(1 for g in de_groups if g == group2))
     if n_group1 == 0 or n_group2 == 0:
         raise ValueError(
-            f"DE comparison requires both groups to have cells. Got {group1}={n_group1}, {group2}={n_group2}."
+            "Contrastive marker analysis requires both groups to have cells. "
+            f"Got {group1}={n_group1}, {group2}={n_group2}."
         )
 
     sc.tl.rank_genes_groups(
@@ -710,7 +652,7 @@ def run_two_group_de(
     de_full = sc.get.rank_genes_groups_df(adata_de, group=group1).reset_index(drop=True)
     if de_full.empty:
         raise ValueError(
-            f"DE did not return any genes for {group1} vs {group2} in {groupby}."
+            f"Contrastive marker analysis did not return any genes for {group1} vs {group2} in {groupby}."
         )
 
     de_top = (
@@ -727,12 +669,27 @@ def run_two_group_de(
         "n_cells_group1": n_group1,
         "n_cells_group2": n_group2,
         "n_genes_full": int(len(de_full)),
-        "top_table": "de_top.csv",
-        "full_table": "de_full.csv",
+        "top_table": "contrastive_markers_top.csv",
+        "full_table": "contrastive_markers_full.csv",
         "top_gene_names": de_top["names"].dropna().astype(str).tolist(),
         "volcano_plot": "",
     }
     return de_full, de_top, summary
+
+
+def attach_leiden_labels(graph_adata, expression_adata):
+    """Attach graph-derived Leiden labels onto another AnnData with matching cells."""
+    attached = expression_adata.copy()
+    leiden_labels = graph_adata.obs["leiden"].astype(str).reindex(attached.obs_names)
+    if bool(leiden_labels.isna().any()):
+        raise ValueError("Internal error: missing Leiden labels for normalized cells.")
+    category_order = sorted(pd.Index(leiden_labels.dropna().unique()), key=_cluster_sort_key)
+    attached.obs["leiden"] = pd.Categorical(
+        leiden_labels.tolist(),
+        categories=category_order,
+        ordered=False,
+    )
+    return attached
 
 
 def aggregate_cluster_annotations(
@@ -817,7 +774,12 @@ def run_celltypist_annotation(adata, model_name: str) -> tuple[pd.DataFrame, dic
     return annotations, metadata
 
 
-def plot_core_figures(adata, markers_top: pd.DataFrame, figures_dir: Path) -> list[Path]:
+def plot_core_figures(
+    graph_adata,
+    marker_adata,
+    markers_top: pd.DataFrame,
+    figures_dir: Path,
+) -> list[Path]:
     """Create QC/UMAP/marker plots."""
     import matplotlib
 
@@ -830,7 +792,7 @@ def plot_core_figures(adata, markers_top: pd.DataFrame, figures_dir: Path) -> li
     created: list[Path] = []
 
     sc.pl.violin(
-        adata,
+        graph_adata,
         ["n_genes_by_counts", "total_counts", "pct_counts_mt"],
         jitter=0.4,
         multi_panel=True,
@@ -842,7 +804,7 @@ def plot_core_figures(adata, markers_top: pd.DataFrame, figures_dir: Path) -> li
     plt.close("all")
     created.append(qc_path)
 
-    sc.pl.umap(adata, color="leiden", legend_loc="on data", show=False)
+    sc.pl.umap(graph_adata, color="leiden", legend_loc="on data", show=False)
     plt.tight_layout()
     umap_path = figures_dir / "umap_leiden.png"
     plt.savefig(umap_path, dpi=180, bbox_inches="tight")
@@ -859,7 +821,7 @@ def plot_core_figures(adata, markers_top: pd.DataFrame, figures_dir: Path) -> li
     marker_genes = list(dict.fromkeys(marker_genes))[:20]
     if marker_genes:
         dot = sc.pl.dotplot(
-            adata,
+            marker_adata,
             var_names=marker_genes,
             groupby="leiden",
             show=False,
@@ -916,28 +878,28 @@ def write_tables(
     return table_paths
 
 
-def write_de_tables(
-    de_full: pd.DataFrame,
-    de_top: pd.DataFrame,
+def write_contrast_tables(
+    contrast_full: pd.DataFrame,
+    contrast_top: pd.DataFrame,
     tables_dir: Path,
 ) -> tuple[Path, Path]:
-    """Write DE full/top tables."""
+    """Write contrastive marker full/top tables."""
     tables_dir.mkdir(parents=True, exist_ok=True)
-    de_full_path = tables_dir / "de_full.csv"
-    de_top_path = tables_dir / "de_top.csv"
-    de_full.to_csv(de_full_path, index=False)
-    de_top.to_csv(de_top_path, index=False)
-    return de_full_path, de_top_path
+    contrast_full_path = tables_dir / "contrastive_markers_full.csv"
+    contrast_top_path = tables_dir / "contrastive_markers_top.csv"
+    contrast_full.to_csv(contrast_full_path, index=False)
+    contrast_top.to_csv(contrast_top_path, index=False)
+    return contrast_full_path, contrast_top_path
 
 
-def plot_de_volcano(
-    de_full: pd.DataFrame,
+def plot_contrast_volcano(
+    contrast_full: pd.DataFrame,
     figures_dir: Path,
     *,
     group1: str,
     group2: str,
 ) -> Path:
-    """Create DE volcano plot from full two-group DE results."""
+    """Create contrastive marker volcano plot from full two-group results."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -945,20 +907,20 @@ def plot_de_volcano(
 
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    if "logfoldchanges" not in de_full.columns:
-        raise ValueError("DE table missing required column: logfoldchanges")
+    if "logfoldchanges" not in contrast_full.columns:
+        raise ValueError("Contrastive markers table missing required column: logfoldchanges")
 
-    p_col = "pvals_adj" if "pvals_adj" in de_full.columns else "pvals"
-    if p_col not in de_full.columns:
-        raise ValueError("DE table missing required p-value column (pvals_adj or pvals).")
+    p_col = "pvals_adj" if "pvals_adj" in contrast_full.columns else "pvals"
+    if p_col not in contrast_full.columns:
+        raise ValueError("Contrastive markers table missing required p-value column (pvals_adj or pvals).")
 
-    log_fc = pd.to_numeric(de_full["logfoldchanges"], errors="coerce").to_numpy(dtype=np.float64)
-    pvals = pd.to_numeric(de_full[p_col], errors="coerce").to_numpy(dtype=np.float64)
+    log_fc = pd.to_numeric(contrast_full["logfoldchanges"], errors="coerce").to_numpy(dtype=np.float64)
+    pvals = pd.to_numeric(contrast_full[p_col], errors="coerce").to_numpy(dtype=np.float64)
     pvals = np.clip(pvals, 1e-300, 1.0)
     neg_log10 = -np.log10(pvals)
     finite_mask = np.isfinite(log_fc) & np.isfinite(neg_log10)
     if int(finite_mask.sum()) == 0:
-        raise ValueError("No finite DE points available for volcano plot.")
+        raise ValueError("No finite contrastive marker points available for volcano plot.")
 
     sig_mask = finite_mask & (pvals < 0.05) & (np.abs(log_fc) >= 1.0)
     up_mask = sig_mask & (log_fc > 0)
@@ -1002,11 +964,11 @@ def plot_de_volcano(
     ax.set_xlabel("log2 fold change")
     y_label = "-log10(adjusted p-value)" if p_col == "pvals_adj" else "-log10(p-value)"
     ax.set_ylabel(y_label)
-    ax.set_title(f"DE Volcano: {group1} vs {group2}")
+    ax.set_title(f"Contrastive Markers Volcano: {group1} vs {group2}")
     ax.legend(loc="upper right", frameon=False)
     ax.grid(alpha=0.18, linewidth=0.5)
 
-    plot_path = figures_dir / "de_volcano.png"
+    plot_path = figures_dir / "contrastive_markers_volcano.png"
     fig.tight_layout()
     fig.savefig(plot_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -1027,7 +989,7 @@ def render_report(
     table_paths: dict[str, Path],
     figure_paths: list[Path],
     n_cells_analyzed: int,
-    de_summary: dict[str, Any],
+    contrast_summary: dict[str, Any],
     doublet_summary: dict[str, Any] | None = None,
     annotation_table: pd.DataFrame | None = None,
     annotation_info: dict[str, Any] | None = None,
@@ -1046,6 +1008,7 @@ def render_report(
             "Genes (after QC)": str(qc_stats["n_genes_after"]),
             "Leiden clusters": str(n_clusters),
             "HVG selected": str(n_hvg),
+            "Graph basis": params["graph_basis"],
             "Doublet method": params["doublet_method"],
             "Annotation backend": params["annotate"],
             "Demo source": demo_source if is_demo and demo_source else "n/a",
@@ -1106,41 +1069,43 @@ def render_report(
                 f"(support={row.support_fraction:.2f}, mean_confidence={row.mean_confidence:.2f})"
             )
 
-    lines.extend(["", "## Differential Expression (Two-Group)", ""])
-    top_genes = de_summary.get("top_gene_names", [])
-    if de_summary.get("enabled"):
-        lines.append(f"- Grouping column: `{de_summary['groupby']}`")
-        lines.append(f"- Comparison: `{de_summary['group1']}` vs `{de_summary['group2']}`")
+    lines.extend(["", "## Contrastive Marker Analysis (Two-Group)", ""])
+    top_genes = contrast_summary.get("top_gene_names", [])
+    if contrast_summary.get("enabled"):
+        lines.append(f"- Grouping column: `{contrast_summary['groupby']}`")
+        lines.append(f"- Comparison: `{contrast_summary['group1']}` vs `{contrast_summary['group2']}`")
         lines.append(
-            f"- Cells in groups: `{de_summary['group1']}={de_summary['n_cells_group1']}`, "
-            f"`{de_summary['group2']}={de_summary['n_cells_group2']}`"
+            f"- Cells in groups: `{contrast_summary['group1']}={contrast_summary['n_cells_group1']}`, "
+            f"`{contrast_summary['group2']}={contrast_summary['n_cells_group2']}`"
         )
-        lines.append(f"- Genes in full DE table: **{de_summary['n_genes_full']}**")
-        lines.append(f"- Full DE table: `tables/{de_summary['full_table']}`")
-        lines.append(f"- Top DE table: `tables/{de_summary['top_table']}`")
-        volcano_plot_name = str(de_summary.get("volcano_plot", "")).strip()
+        lines.append(f"- Genes in full table: **{contrast_summary['n_genes_full']}**")
+        lines.append(f"- Full table: `tables/{contrast_summary['full_table']}`")
+        lines.append(f"- Top table: `tables/{contrast_summary['top_table']}`")
+        volcano_plot_name = str(contrast_summary.get("volcano_plot", "")).strip()
         if volcano_plot_name:
             lines.append(f"- Volcano plot: `figures/{volcano_plot_name}`")
         else:
-            lines.append("- Volcano plot: not generated (use `--de-volcano`)")
+            lines.append("- Volcano plot: not generated (use `--contrast-volcano`)")
         lines.append("")
-        lines.append("Top DE genes by score:")
+        lines.append("Top contrastive marker genes by score:")
         if top_genes:
             lines.extend([f"- `{gene}`" for gene in top_genes[:10]])
         else:
             lines.append("- None")
         if volcano_plot_name:
-            lines.extend(["", f"![DE Volcano](figures/{volcano_plot_name})"])
-        de_methods = (
-            "- Differential expression: `scanpy.tl.rank_genes_groups` "
-            f"(Wilcoxon, `{de_summary['group1']}` vs `{de_summary['group2']}`, "
-            f"`groupby={de_summary['groupby']}`)"
+            lines.extend(["", f"![Contrastive Marker Volcano](figures/{volcano_plot_name})"])
+        contrast_methods = (
+            "- Contrastive marker analysis: `scanpy.tl.rank_genes_groups` "
+            f"(Wilcoxon, `{contrast_summary['group1']}` vs `{contrast_summary['group2']}`, "
+            f"`groupby={contrast_summary['groupby']}`)"
         )
         if volcano_plot_name:
-            de_methods += "; volcano plot with thresholds `p<0.05`, `|log2FC|>=1`"
+            contrast_methods += "; volcano plot with thresholds `p<0.05`, `|log2FC|>=1`"
     else:
-        lines.append("- Not enabled for this run (use `--de-groupby --de-group1 --de-group2`).")
-        de_methods = "- Differential expression: not enabled"
+        lines.append(
+            "- Not enabled for this run (use `--contrast-groupby --contrast-group1 --contrast-group2`)."
+        )
+        contrast_methods = "- Contrastive marker analysis: not enabled"
 
     lines.extend(["", "## Methods", ""])
     lines.append(
@@ -1154,18 +1119,28 @@ def render_report(
         )
     lines.append("- Normalisation: total-count normalisation (`target_sum=1e4`) + `log1p`")
     lines.append(f"- Feature selection: `n_top_hvg={params['n_top_hvg']}`")
-    lines.append(
-        "- Embedding: "
-        f"`n_pcs={n_pcs_eff}`, `n_neighbors={params['n_neighbors']}`, UMAP"
-    )
+    if params["graph_basis"] == "pca":
+        lines.append(
+            "- Graph construction: "
+            f"PCA (`n_pcs={n_pcs_eff}`) + neighbors (`n_neighbors={params['n_neighbors']}`) + UMAP"
+        )
+    else:
+        lines.append(
+            "- Graph construction: "
+            f"latent representation `{params['graph_basis']}` + neighbors "
+            f"(`n_neighbors={params['n_neighbors']}`) + UMAP"
+        )
     lines.append(f"- Clustering: Leiden `resolution={params['leiden_resolution']}`")
-    lines.append("- Marker analysis: `scanpy.tl.rank_genes_groups` (Wilcoxon, cluster-vs-rest)")
+    lines.append(
+        "- Marker analysis: `scanpy.tl.rank_genes_groups` "
+        "(Wilcoxon, cluster-vs-rest) on normalized full-gene expression"
+    )
     if annotation_info is not None:
         lines.append(
             "- Annotation: "
             f"`CellTypist` model `{annotation_info['model']}` on normalized/log1p full-gene expression"
         )
-    lines.append(de_methods)
+    lines.append(contrast_methods)
 
     lines.extend(["", "## Reproducibility", "", "See:"])
     lines.append("- `reproducibility/commands.sh`")
@@ -1182,6 +1157,10 @@ def build_repro_command(
     input_path: Path | None,
     is_demo: bool,
     args: argparse.Namespace,
+    *,
+    resolved_use_rep: str,
+    contrast_request: dict[str, str] | None,
+    contrast_options: dict[str, Any],
 ) -> str:
     """Build a reproducible CLI command for commands.sh."""
     parts = ["python", "skills/scrna-orchestrator/scrna_orchestrator.py"]
@@ -1193,6 +1172,10 @@ def build_repro_command(
         parts.extend(["--input", str(input_path)])
 
     parts.extend(["--output", str(output_dir)])
+    if resolved_use_rep:
+        parts.extend(["--use-rep", resolved_use_rep])
+    elif (args.use_rep or "auto").strip() == "none":
+        parts.extend(["--use-rep", "none"])
 
     tunable_defaults = [
         ("--min-genes", args.min_genes, 200),
@@ -1214,13 +1197,13 @@ def build_repro_command(
     if args.annotate != "none":
         parts.extend(["--annotate", args.annotate])
         parts.extend(["--annotation-model", args.annotation_model])
-    if args.de_groupby and args.de_group1 and args.de_group2:
-        parts.extend(["--de-groupby", str(args.de_groupby)])
-        parts.extend(["--de-group1", str(args.de_group1)])
-        parts.extend(["--de-group2", str(args.de_group2)])
-        parts.extend(["--de-top-genes", str(args.de_top_genes)])
-        if args.de_volcano:
-            parts.append("--de-volcano")
+    if contrast_request:
+        parts.extend(["--contrast-groupby", contrast_request["groupby"]])
+        parts.extend(["--contrast-group1", contrast_request["group1"]])
+        parts.extend(["--contrast-group2", contrast_request["group2"]])
+        parts.extend(["--contrast-top-genes", str(contrast_options["top_genes"])])
+        if contrast_options["volcano"]:
+            parts.append("--contrast-volcano")
 
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -1233,11 +1216,23 @@ def write_reproducibility(
     args: argparse.Namespace,
     table_paths: dict[str, Path],
     figure_paths: list[Path],
+    *,
+    resolved_use_rep: str,
+    contrast_request: dict[str, str] | None,
+    contrast_options: dict[str, Any],
 ) -> None:
     """Write commands.sh, environment.yml, and checksums.sha256."""
     repro_dir = output_dir / "reproducibility"
     repro_dir.mkdir(parents=True, exist_ok=True)
-    cmd_line = build_repro_command(output_dir, input_path, is_demo, args)
+    cmd_line = build_repro_command(
+        output_dir,
+        input_path,
+        is_demo,
+        args,
+        resolved_use_rep=resolved_use_rep,
+        contrast_request=contrast_request,
+        contrast_options=contrast_options,
+    )
 
     commands = f"""#!/usr/bin/env bash
 # Reproducibility script — ClawBio scRNA Orchestrator
@@ -1301,13 +1296,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     figures_dir.mkdir(exist_ok=True)
     tables_dir.mkdir(exist_ok=True)
 
-    de_request = resolve_de_request(args)
-    if args.de_top_genes < 1:
-        raise ValueError("--de-top-genes must be >= 1.")
-    if args.de_volcano and de_request is None:
-        raise ValueError("--de-volcano requires --de-groupby, --de-group1, and --de-group2.")
-
-    de_summary: dict[str, Any] = {
+    contrast_request, contrast_options = resolve_contrast_request(args)
+    contrast_summary: dict[str, Any] = {
         "enabled": False,
         "groupby": "",
         "group1": "",
@@ -1321,10 +1311,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "volcano_plot": "",
     }
 
-    adata, input_path, is_demo, demo_source, input_source = load_data(
+    adata, input_path, is_demo, demo_source, input_source, latent_context = load_data(
         args.input,
         args.demo,
         args.random_state,
+        use_rep=args.use_rep,
     )
     adata_qc, qc_stats = qc_filter(
         adata,
@@ -1338,67 +1329,69 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         random_state=args.random_state,
     )
     adata_norm, adata_hvg, n_hvg = run_preprocess(adata_clean, n_top_hvg=args.n_top_hvg)
-    adata_emb, n_pcs_eff = run_embedding_cluster(
-        adata_hvg,
+    graph_input = adata_norm if latent_context["resolved_use_rep"] else adata_hvg
+    adata_graph, n_pcs_eff = run_embedding_cluster(
+        graph_input,
         n_pcs=args.n_pcs,
         n_neighbors=args.n_neighbors,
         leiden_resolution=args.leiden_resolution,
         random_state=args.random_state,
+        use_rep=latent_context["resolved_use_rep"],
     )
+    adata_expression = attach_leiden_labels(adata_graph, adata_norm)
     adata_markers, _, markers_top = run_markers(
-        adata_emb,
+        adata_expression,
         top_markers=args.top_markers,
     )
-
-    leiden_labels = adata_markers.obs["leiden"].astype(str).reindex(adata_norm.obs_names)
-    if bool(leiden_labels.isna().any()):
-        raise ValueError("Internal error: missing Leiden labels for normalized cells.")
-    adata_norm.obs["leiden"] = leiden_labels
 
     annotation_table = None
     annotation_info = None
     if args.annotate != "none":
         annotation_table, annotation_info = run_celltypist_annotation(
-            adata_norm.copy(),
+            adata_markers.copy(),
             model_name=args.annotation_model,
         )
 
-    de_full = None
-    de_top = None
-    if de_request:
-        de_full, de_top, de_summary = run_two_group_de(
-            adata_norm.copy(),
-            groupby=de_request["groupby"],
-            group1=de_request["group1"],
-            group2=de_request["group2"],
-            top_genes=args.de_top_genes,
+    contrast_full = None
+    contrast_top = None
+    if contrast_request:
+        contrast_full, contrast_top, contrast_summary = run_contrastive_markers(
+            adata_markers.copy(),
+            groupby=contrast_request["groupby"],
+            group1=contrast_request["group1"],
+            group2=contrast_request["group2"],
+            top_genes=contrast_options["top_genes"],
         )
 
     table_paths = write_tables(
-        adata_markers,
+        adata_graph,
         markers_top,
         tables_dir,
         doublet_summary=doublet_summary,
         annotation_table=annotation_table,
     )
-    if de_request and de_full is not None and de_top is not None:
-        de_full_path, de_top_path = write_de_tables(de_full, de_top, tables_dir)
-        table_paths["de_full"] = de_full_path
-        table_paths["de_top"] = de_top_path
-
-    figure_paths = plot_core_figures(adata_markers, markers_top, figures_dir)
-    if de_request and de_full is not None and args.de_volcano:
-        volcano_path = plot_de_volcano(
-            de_full,
-            figures_dir,
-            group1=de_summary["group1"],
-            group2=de_summary["group2"],
+    if contrast_request and contrast_full is not None and contrast_top is not None:
+        contrast_full_path, contrast_top_path = write_contrast_tables(
+            contrast_full,
+            contrast_top,
+            tables_dir,
         )
-        de_summary["volcano_plot"] = volcano_path.name
+        table_paths["contrastive_markers_full"] = contrast_full_path
+        table_paths["contrastive_markers_top"] = contrast_top_path
+
+    figure_paths = plot_core_figures(adata_graph, adata_markers, markers_top, figures_dir)
+    if contrast_request and contrast_full is not None and contrast_options["volcano"]:
+        volcano_path = plot_contrast_volcano(
+            contrast_full,
+            figures_dir,
+            group1=contrast_summary["group1"],
+            group2=contrast_summary["group2"],
+        )
+        contrast_summary["volcano_plot"] = volcano_path.name
         figure_paths.append(volcano_path)
 
-    n_clusters = int(adata_markers.obs["leiden"].nunique())
-    n_cells_analyzed = int(adata_markers.n_obs)
+    n_clusters = int(adata_graph.obs["leiden"].nunique())
+    n_cells_analyzed = int(adata_graph.n_obs)
     params = {
         "min_genes": args.min_genes,
         "min_cells": args.min_cells,
@@ -1411,6 +1404,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "doublet_method": args.doublet_method,
         "annotate": args.annotate,
         "annotation_model": args.annotation_model,
+        "graph_basis": latent_context["graph_basis"],
     }
     report_path = render_report(
         output_dir=output_dir,
@@ -1426,7 +1420,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         table_paths=table_paths,
         figure_paths=figure_paths,
         n_cells_analyzed=n_cells_analyzed,
-        de_summary=de_summary,
+        contrast_summary=contrast_summary,
         doublet_summary=doublet_summary,
         annotation_table=annotation_table,
         annotation_info=annotation_info,
@@ -1439,15 +1433,19 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "n_genes_after": qc_stats["n_genes_after"],
         "n_hvg": n_hvg,
         "n_clusters": n_clusters,
+        "graph_basis": latent_context["graph_basis"],
+        "use_rep_resolved": latent_context["resolved_use_rep"],
     }
     if doublet_summary is not None:
         summary["n_predicted_doublets"] = doublet_summary["n_predicted_doublets"]
     if annotation_info is not None:
         summary["n_clusters_annotated"] = annotation_info["n_clusters_annotated"]
+    if latent_context["counts_layer"]:
+        summary["counts_layer"] = latent_context["counts_layer"]
 
     data: dict[str, Any] = {
         "cluster_labels": sorted(
-            adata_markers.obs["leiden"].astype(str).unique().tolist(),
+            adata_graph.obs["leiden"].astype(str).unique().tolist(),
             key=_cluster_sort_key,
         ),
         "input": {
@@ -1457,18 +1455,24 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "tables": [path.name for path in table_paths.values()],
         "figures": [path.name for path in figure_paths],
         "demo_source": demo_source if is_demo else "not_demo",
-        "de": {
-            "enabled": bool(de_summary["enabled"]),
-            "groupby": de_summary["groupby"] if de_summary["enabled"] else "",
-            "group1": de_summary["group1"] if de_summary["enabled"] else "",
-            "group2": de_summary["group2"] if de_summary["enabled"] else "",
-            "n_genes_full": int(de_summary["n_genes_full"]) if de_summary["enabled"] else 0,
-            "full_table": de_summary["full_table"] if de_summary["enabled"] else "",
-            "top_table": de_summary["top_table"] if de_summary["enabled"] else "",
-            "volcano_plot": de_summary["volcano_plot"] if de_summary["enabled"] else "",
-        },
+        "graph_basis": latent_context["graph_basis"],
+        "use_rep_resolved": latent_context["resolved_use_rep"],
+        "counts_layer": latent_context["counts_layer"],
         "disclaimer": DISCLAIMER,
     }
+    contrast_payload = {
+        "enabled": bool(contrast_summary["enabled"]),
+        "groupby": contrast_summary["groupby"] if contrast_summary["enabled"] else "",
+        "group1": contrast_summary["group1"] if contrast_summary["enabled"] else "",
+        "group2": contrast_summary["group2"] if contrast_summary["enabled"] else "",
+        "n_genes_full": int(contrast_summary["n_genes_full"]) if contrast_summary["enabled"] else 0,
+        "full_table": contrast_summary["full_table"] if contrast_summary["enabled"] else "",
+        "top_table": contrast_summary["top_table"] if contrast_summary["enabled"] else "",
+        "volcano_plot": contrast_summary["volcano_plot"] if contrast_summary["enabled"] else "",
+        "used_legacy_flags": bool(contrast_options["used_legacy_flags"]),
+    }
+    data["contrastive_markers"] = contrast_payload
+    data["de"] = contrast_payload.copy()
     if doublet_summary is not None:
         doublet_table = table_paths.get("doublet_summary")
         data["doublet"] = {
@@ -1499,6 +1503,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         args,
         table_paths=table_paths,
         figure_paths=figure_paths,
+        resolved_use_rep=latent_context["resolved_use_rep"],
+        contrast_request=contrast_request,
+        contrast_options=contrast_options,
     )
 
     return {
@@ -1513,7 +1520,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "ClawBio scRNA Orchestrator — Scanpy QC/clustering/markers with optional "
-            "doublet detection, CellTypist annotation, and two-group DE"
+            "doublet detection, CellTypist annotation, and contrastive marker analysis"
         ),
     )
     parser.add_argument(
@@ -1533,6 +1540,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-top-hvg", type=int, default=2000, help="Number of highly variable genes")
     parser.add_argument("--n-pcs", type=int, default=50, help="Number of principal components")
     parser.add_argument("--n-neighbors", type=int, default=15, help="Number of neighbors for graph construction")
+    parser.add_argument(
+        "--use-rep",
+        default="auto",
+        help="Graph representation: `auto`, `none`, or an `.obsm` key such as `X_scvi`",
+    )
     parser.add_argument("--leiden-resolution", type=float, default=1.0, help="Leiden resolution")
     parser.add_argument("--random-state", type=int, default=0, help="Random seed")
     parser.add_argument("--top-markers", type=int, default=10, help="Top markers per cluster")
@@ -1553,11 +1565,30 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CELLTYPIST_MODEL,
         help="Local CellTypist model name or path (used with --annotate celltypist)",
     )
-    parser.add_argument("--de-groupby", default=None, help="obs column for two-group DE")
-    parser.add_argument("--de-group1", default=None, help="Group 1 value for DE")
-    parser.add_argument("--de-group2", default=None, help="Group 2 reference value for DE")
-    parser.add_argument("--de-top-genes", type=int, default=50, help="Top DE genes to include in summary table")
-    parser.add_argument("--de-volcano", action="store_true", help="Generate optional DE volcano plot")
+    parser.add_argument("--contrast-groupby", default=None, help="obs column for two-group contrastive markers")
+    parser.add_argument("--contrast-group1", default=None, help="Group 1 value for contrastive markers")
+    parser.add_argument("--contrast-group2", default=None, help="Group 2 reference value for contrastive markers")
+    parser.add_argument(
+        "--contrast-top-genes",
+        type=int,
+        default=None,
+        help="Top contrastive marker genes to include in the summary table",
+    )
+    parser.add_argument(
+        "--contrast-volcano",
+        action="store_true",
+        help="Generate optional contrastive markers volcano plot",
+    )
+    parser.add_argument("--de-groupby", default=None, help="Deprecated alias for --contrast-groupby")
+    parser.add_argument("--de-group1", default=None, help="Deprecated alias for --contrast-group1")
+    parser.add_argument("--de-group2", default=None, help="Deprecated alias for --contrast-group2")
+    parser.add_argument(
+        "--de-top-genes",
+        type=int,
+        default=None,
+        help="Deprecated alias for --contrast-top-genes",
+    )
+    parser.add_argument("--de-volcano", action="store_true", help="Deprecated alias for --contrast-volcano")
     return parser.parse_args()
 
 

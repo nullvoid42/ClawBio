@@ -5,13 +5,20 @@ from __future__ import annotations
 import argparse
 import hashlib
 import math
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
+
+from clawbio.common.report import write_result_json
 
 
 DISCLAIMER = (
@@ -58,6 +65,7 @@ def load_counts(path: Path) -> pd.DataFrame:
     if (counts < 0).any().any():
         raise ValueError("Count matrix contains negative counts")
     counts.index = counts.index.astype(str)
+    counts.columns = counts.columns.astype(str)
     return counts
 
 
@@ -69,6 +77,7 @@ def load_metadata(path: Path) -> pd.DataFrame:
     metadata = metadata.copy()
     metadata["sample_id"] = metadata["sample_id"].astype(str)
     metadata = metadata.set_index("sample_id")
+    metadata.index.name = "sample_id"
     return metadata
 
 
@@ -84,6 +93,8 @@ def align_and_validate(
     if missing_samples:
         raise ValueError(f"Metadata missing samples: {missing_samples[:5]}")
     metadata = metadata.loc[counts.columns].copy()
+    metadata.index = metadata.index.astype(str)
+    metadata.index.name = "sample_id"
 
     for term in formula_terms:
         if term not in metadata.columns:
@@ -213,7 +224,7 @@ def _try_de_pydeseq2(
     factor: str,
     numerator: str,
     denominator: str,
-) -> pd.DataFrame | None:
+) -> tuple[pd.DataFrame, dict[str, str | bool]] | None:
     try:
         from pydeseq2.dds import DeseqDataSet
         from pydeseq2.ds import DeseqStats
@@ -222,36 +233,72 @@ def _try_de_pydeseq2(
 
     md = metadata.copy()
     for term in formula_terms:
-        md[term] = md[term].astype("category")
+        if term == factor:
+            observed = pd.Series(md[term].astype(str)).dropna().tolist()
+            ordered_levels = [denominator] + [level for level in dict.fromkeys(observed) if level != denominator]
+            md[term] = pd.Categorical(md[term].astype(str), categories=ordered_levels, ordered=True)
+        else:
+            md[term] = md[term].astype("category")
 
     cts = counts.T.round().astype(int)
 
+    design = "~ " + " + ".join(formula_terms)
     try:
-        dds = DeseqDataSet(
-            counts=cts,
-            metadata=md,
-            design_factors=formula_terms,
-            refit_cooks=True,
-        )
-    except TypeError:
-        design = "~ " + " + ".join(formula_terms)
         dds = DeseqDataSet(
             counts=cts,
             metadata=md,
             design=design,
             refit_cooks=True,
         )
+    except TypeError:
+        dds = DeseqDataSet(
+            counts=cts,
+            metadata=md,
+            design_factors=formula_terms,
+            refit_cooks=True,
+        )
 
     dds.deseq2()
     stats = DeseqStats(dds, contrast=[factor, numerator, denominator])
     stats.summary()
+    shrinkage = {
+        "lfc_shrinkage_applied": False,
+        "lfc_shrinkage_coeff": "",
+        "lfc_shrinkage_note": "",
+    }
+    coeff = _resolve_shrinkage_coeff(dds, factor, numerator)
+    if coeff:
+        try:
+            stats.lfc_shrink(coeff=coeff)
+            shrinkage["lfc_shrinkage_applied"] = True
+            shrinkage["lfc_shrinkage_coeff"] = coeff
+        except Exception as exc:
+            shrinkage["lfc_shrinkage_note"] = f"Attempted LFC shrinkage with '{coeff}' but failed: {exc}"
+    else:
+        shrinkage["lfc_shrinkage_note"] = "Could not identify a PyDESeq2 coefficient for LFC shrinkage."
     res = stats.results_df.reset_index().rename(columns={"index": "gene"})
     if "baseMean" not in res.columns:
         base_mean = (counts.div(counts.sum(axis=0), axis=1) * 1_000_000.0).mean(axis=1)
         res = res.merge(base_mean.rename("baseMean"), left_on="gene", right_index=True, how="left")
     cols = ["gene", "baseMean", "log2FoldChange", "pvalue", "padj"]
     keep = [col for col in cols if col in res.columns]
-    return res[keep].sort_values("padj", ascending=True)
+    return res[keep].sort_values("padj", ascending=True), shrinkage
+
+
+def _resolve_shrinkage_coeff(dds: object, factor: str, numerator: str) -> str:
+    lfc_table = getattr(getattr(dds, "varm", {}), "get", lambda *_args, **_kwargs: None)("LFC")
+    columns = [str(col) for col in getattr(lfc_table, "columns", [])]
+    preferred = f"{factor}[T.{numerator}]"
+    if preferred in columns:
+        return preferred
+    suffix = f"[T.{numerator}]"
+    for col in columns:
+        if col.startswith(f"{factor}[") and col.endswith(suffix):
+            return col
+    for col in columns:
+        if col != "Intercept" and col.startswith(f"{factor}[") and numerator in col:
+            return col
+    return ""
 
 
 def run_de(
@@ -262,15 +309,19 @@ def run_de(
     numerator: str,
     denominator: str,
     backend: str,
-) -> tuple[pd.DataFrame, str]:
+) -> tuple[pd.DataFrame, str, dict[str, str | bool]]:
     if backend in {"auto", "pydeseq2"}:
         pydeseq_res = _try_de_pydeseq2(counts, metadata, formula_terms, factor, numerator, denominator)
         if pydeseq_res is not None:
-            return pydeseq_res, "pydeseq2"
+            return pydeseq_res[0], "pydeseq2", pydeseq_res[1]
         if backend == "pydeseq2":
             raise RuntimeError("PyDESeq2 backend requested but unavailable in this environment")
 
-    return de_simple(counts, metadata, factor, numerator, denominator), "simple"
+    return de_simple(counts, metadata, factor, numerator, denominator), "simple", {
+        "lfc_shrinkage_applied": False,
+        "lfc_shrinkage_coeff": "",
+        "lfc_shrinkage_note": "LFC shrinkage is only available with the PyDESeq2 backend.",
+    }
 
 
 def plot_pca(pca_df: pd.DataFrame, metadata: pd.DataFrame, factor: str, var_ratio: np.ndarray, outpath: Path) -> None:
@@ -386,6 +437,7 @@ def write_report(
     contrast: str,
     backend_used: str,
     de_results: pd.DataFrame,
+    shrinkage_meta: dict[str, str | bool],
 ) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     top = de_results.head(10)
@@ -404,6 +456,13 @@ def write_report(
 **Formula**: `{formula}`
 **Contrast**: `{contrast}`
 **Backend used**: `{backend_used}`
+**LFC shrinkage**: `{"applied" if shrinkage_meta.get("lfc_shrinkage_applied") else "not applied"}`
+"""
+    if shrinkage_meta.get("lfc_shrinkage_coeff"):
+        report += f"**LFC shrinkage coefficient**: `{shrinkage_meta['lfc_shrinkage_coeff']}`\n"
+    if shrinkage_meta.get("lfc_shrinkage_note"):
+        report += f"**LFC shrinkage note**: {shrinkage_meta['lfc_shrinkage_note']}\n"
+    report += f"""
 
 ## Pre-DE QC + PCA
 
@@ -467,7 +526,7 @@ def run_analysis(
     n_genes_after = filtered.shape[0]
     norm_log = cpm_log1p(filtered)
     pca_df, var_ratio = run_pca(norm_log)
-    de_results, backend_used = run_de(
+    de_results, backend_used, shrinkage_meta = run_de(
         filtered,
         metadata,
         formula_terms,
@@ -495,6 +554,32 @@ def run_analysis(
         contrast=contrast,
         backend_used=backend_used,
         de_results=de_results,
+        shrinkage_meta=shrinkage_meta,
+    )
+    write_result_json(
+        output_dir=output_dir,
+        skill="rnaseq",
+        version="0.1.0",
+        summary={
+            "samples": counts.shape[1],
+            "genes_pre": n_genes_before,
+            "genes_post": n_genes_after,
+            "formula": formula,
+            "contrast": contrast,
+            "backend_used": backend_used,
+            "lfc_shrinkage_applied": bool(shrinkage_meta.get("lfc_shrinkage_applied")),
+            "lfc_shrinkage_coeff": str(shrinkage_meta.get("lfc_shrinkage_coeff", "")),
+            "lfc_shrinkage_note": str(shrinkage_meta.get("lfc_shrinkage_note", "")),
+        },
+        data={
+            "input": {
+                "counts": counts_path.name,
+                "metadata": metadata_path.name,
+            },
+            "tables": ["qc_summary.csv", "normalized_counts.csv", "de_results.csv"],
+            "figures": ["pca.png", "volcano.png", "ma_plot.png"],
+            "disclaimer": DISCLAIMER,
+        },
     )
 
     return {
@@ -503,6 +588,7 @@ def run_analysis(
         "genes_pre": n_genes_before,
         "genes_post": n_genes_after,
         "backend_used": backend_used,
+        "lfc_shrinkage_applied": bool(shrinkage_meta.get("lfc_shrinkage_applied")),
     }
 
 

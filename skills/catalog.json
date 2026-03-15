@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "generated_by": "scripts/generate_catalog.py",
-  "skill_count": 24,
+  "skill_count": 26,
   "galaxy_tool_count": 8182,
   "skills": [
     {
@@ -148,6 +148,37 @@
       "tags": [],
       "trigger_keywords": [],
       "chaining_partners": []
+    },
+    {
+      "name": "diff-visualizer",
+      "cli_alias": "diffviz",
+      "description": "Rich downstream visualisation and reporting for bulk RNA-seq differential expression and scRNA marker/contrast outputs.",
+      "version": "0.1.0",
+      "status": "mvp",
+      "has_script": true,
+      "has_tests": true,
+      "has_demo": true,
+      "demo_command": "python clawbio.py run diffviz --demo",
+      "dependencies": [],
+      "tags": [
+        "differential-expression",
+        "visualisation",
+        "rnaseq",
+        "scrna",
+        "volcano",
+        "heatmap"
+      ],
+      "trigger_keywords": [
+        "visualize de results",
+        "de visualization",
+        "marker heatmap",
+        "marker dotplot",
+        "top genes heatmap"
+      ],
+      "chaining_partners": [
+        "rnaseq-de",
+        "scrna-orchestrator"
+      ]
     },
     {
       "name": "drug-photo",
@@ -316,6 +347,28 @@
       ]
     },
     {
+      "name": "illumina-bridge",
+      "cli_alias": null,
+      "description": "Import DRAGEN-exported Illumina result bundles into ClawBio for local tertiary analysis and downstream routing.",
+      "version": "0.1.0",
+      "status": "planned",
+      "has_script": true,
+      "has_tests": true,
+      "has_demo": true,
+      "demo_command": "python skills/illumina-bridge/illumina_bridge.py --demo",
+      "dependencies": [],
+      "tags": [
+        "illumina",
+        "dragen",
+        "ica",
+        "tertiary-analysis",
+        "vcf",
+        "genomics"
+      ],
+      "trigger_keywords": [],
+      "chaining_partners": []
+    },
+    {
       "name": "labstep",
       "cli_alias": null,
       "description": "Interact with the Labstep electronic lab notebook API using labstepPy. Query experiments, protocols, resources, inventory, and other lab entities.",
@@ -348,7 +401,7 @@
     {
       "name": "nutrigx_advisor",
       "cli_alias": "nutrigx",
-      "description": "",
+      "description": "Personalised nutrigenomics report from consumer genetic data, with dietary and supplementation guidance generated locally.",
       "version": "0.1.0",
       "status": "mvp",
       "has_script": true,
@@ -356,7 +409,15 @@
       "has_demo": true,
       "demo_command": "python clawbio.py run nutrigx --demo",
       "dependencies": [],
-      "tags": [],
+      "tags": [
+        "nutrigenomics",
+        "nutrition",
+        "diet",
+        "genetics",
+        "23andme",
+        "ancestrydna",
+        "vcf"
+      ],
       "trigger_keywords": [
         "nutrition",
         "nutrigenomics",
@@ -447,9 +508,33 @@
       "chaining_partners": []
     },
     {
+      "name": "rnaseq-de",
+      "cli_alias": "rnaseq",
+      "description": "Differential expression analysis for bulk RNA-seq and pseudo-bulk count matrices with QC, PCA, and contrast testing.",
+      "version": "0.1.0",
+      "status": "mvp",
+      "has_script": true,
+      "has_tests": true,
+      "has_demo": true,
+      "demo_command": "python clawbio.py run rnaseq --demo",
+      "dependencies": [],
+      "tags": [],
+      "trigger_keywords": [
+        "differential expression",
+        "bulk rna",
+        "rna-seq",
+        "count matrix",
+        "deseq2",
+        "pydeseq2"
+      ],
+      "chaining_partners": [
+        "diff-visualizer"
+      ]
+    },
+    {
       "name": "scrna-embedding",
       "cli_alias": "scrna-embedding",
-      "description": "Local scVI-based single-cell latent embedding and batch-aware integration from raw-count .h5ad or 10x Matrix Market input, with integrated AnnData export and latent-space outputs.",
+      "description": "Local scVI-based single-cell latent embedding and batch-aware integration from raw-count .h5ad or 10x Matrix Market input, with stable integrated AnnData export for downstream latent analysis.",
       "version": "0.1.0",
       "status": "mvp",
       "has_script": true,
@@ -482,7 +567,7 @@
     {
       "name": "scrna-orchestrator",
       "cli_alias": "scrna",
-      "description": "Local Scanpy pipeline for single-cell RNA-seq QC, optional doublet detection, clustering, marker discovery, optional CellTypist annotation, and optional two-group differential expression from raw-count .h5ad or 10x Matrix Market input.",
+      "description": "Local Scanpy pipeline for single-cell RNA-seq QC, optional doublet detection, clustering, marker discovery, optional CellTypist annotation, optional latent downstream mode from integrated.h5ad/X_scvi, and optional two-group contrastive marker analysis from raw-count .h5ad or 10x Matrix Market input.",
       "version": "0.1.0",
       "status": "mvp",
       "has_script": true,
