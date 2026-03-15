@@ -300,6 +300,118 @@ async def index():
     return HTMLResponse(html_path.read_text())
 
 
+# Serialization lock — single skill run at a time
+_run_lock = asyncio.Lock()
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+
+    async def send_brain(stage: str, status: str, log: str):
+        await ws.send_json({"type": "brain", "stage": stage, "status": status, "log": log})
+
+    async def send_chat(content: str, done: bool = False):
+        msg = {"type": "chat", "done": done}
+        if content:
+            msg["content"] = content
+        await ws.send_json(msg)
+
+    try:
+        while True:
+            data = await ws.receive_json()
+            if data.get("type") != "message":
+                continue
+
+            query = data.get("content", "").strip()
+            if not query:
+                continue
+
+            async with _run_lock:
+                # ── Stage 1: Route ──
+                await send_brain("route", "active", "Routing query...")
+                try:
+                    route_result = await route_query(query)
+                    skill = route_result.get("skill")
+                    params = route_result.get("params", {})
+                    confidence = route_result.get("confidence", 0)
+                    reasoning = route_result.get("reasoning", "")
+
+                    if skill:
+                        await send_brain("route", "done",
+                                         f"→ {skill} ({confidence:.2f}) — {reasoning}")
+                    else:
+                        await send_brain("route", "error", f"No skill matched: {reasoning}")
+                        await send_chat(
+                            f"I'm not sure which skill to use for that. {reasoning}\n\n"
+                            f"I can help with: pharmacogenomics, nutrigenomics, genome comparison, "
+                            f"polygenic risk scores, gene-drug lookup, variant search, and profile reports.",
+                        )
+                        await send_chat("", done=True)
+                        continue
+                except Exception as e:
+                    await send_brain("route", "error", f"Routing failed: {e}")
+                    await send_chat("Something went wrong routing your question. Please try again.")
+                    await send_chat("", done=True)
+                    continue
+
+                # ── Stage 2: Load Data ──
+                await send_brain("load", "active", "Preparing data...")
+                if skill in GENOME_SKILLS:
+                    await send_brain("load", "done",
+                                     f"Manuel Corpas genome · 23andMe format · {GENOME_PATH.name}")
+                else:
+                    await send_brain("load", "done", f"Using demo/API mode for {skill}")
+
+                # ── Stage 3: Run Skill ──
+                await send_brain("run", "active", f"Running {skill}...")
+
+                async def on_skill_log(line: str):
+                    await send_brain("run", "active", line)
+
+                try:
+                    result = await run_skill(skill, params, on_log=on_skill_log)
+                    if result["success"]:
+                        await send_brain("run", "done", "Skill completed — report generated")
+                    else:
+                        error = result.get("error") or result.get("stderr", "Unknown error")
+                        await send_brain("run", "error", f"Skill failed: {error[:200]}")
+                        await send_chat(f"Something went wrong running {skill}. Try asking differently.")
+                        await send_chat("", done=True)
+                        continue
+                except Exception as e:
+                    await send_brain("run", "error", f"Execution error: {e}")
+                    await send_chat(f"Something went wrong running {skill}. Try asking differently.")
+                    await send_chat("", done=True)
+                    continue
+
+                # ── Stage 4: Interpret ──
+                report = result.get("report") or result.get("stdout", "")
+                if not report:
+                    await send_brain("interpret", "error", "No report to interpret")
+                    await send_chat(f"The {skill} skill ran but produced no output.")
+                    await send_chat("", done=True)
+                    continue
+
+                await send_brain("interpret", "active", "Interpreting results...")
+
+                async def on_token(token: str):
+                    await send_chat(token)
+
+                try:
+                    await stream_interpret(query, skill, report, on_token=on_token)
+                    await send_brain("interpret", "done", "Response ready")
+                    await send_chat("", done=True)
+                except Exception as e:
+                    await send_brain("interpret", "error", f"Interpretation failed: {e}")
+                    # Fallback: send raw report snippet
+                    await send_chat(f"Here's the raw output from {skill}:\n\n{report[:2000]}")
+                    await send_chat("", done=True)
+
+    except WebSocketDisconnect:
+        pass
+
+
 if __name__ == "__main__":
     import uvicorn
     print("=" * 50)

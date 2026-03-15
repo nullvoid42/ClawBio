@@ -178,3 +178,44 @@ def test_build_interpret_messages_truncates_long_report():
     user_msg = messages[1]["content"]
     assert len(user_msg) < 10000
     assert "truncated" in user_msg.lower()
+
+
+def test_websocket_pipeline():
+    """WebSocket endpoint should accept connections and stream brain events through all 4 stages."""
+    from starlette.testclient import TestClient
+
+    from server import app
+
+    mock_route = {
+        "skill": "pharmgx-reporter",
+        "confidence": 0.94,
+        "reasoning": "Drug interactions",
+        "params": {},
+    }
+    mock_result = {
+        "success": True,
+        "report": "## Report\nCYP2D6: Normal Metabolizer",
+        "result_json": None,
+        "stdout": "",
+        "stderr": "",
+    }
+
+    with patch("server.route_query", new_callable=AsyncMock, return_value=mock_route), \
+         patch("server.run_skill", new_callable=AsyncMock, return_value=mock_result), \
+         patch("server.stream_interpret", new_callable=AsyncMock):
+
+        client = TestClient(app)
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "message", "content": "What drugs should I worry about?"})
+
+            # Collect all messages until we get a chat done
+            messages = []
+            for _ in range(20):  # safety limit
+                msg = ws.receive_json()
+                messages.append(msg)
+                if msg.get("type") == "chat" and msg.get("done"):
+                    break
+
+            brain_msgs = [m for m in messages if m["type"] == "brain"]
+            assert len(brain_msgs) >= 4  # route, load, run, interpret stages
+            assert brain_msgs[0]["stage"] == "route"
