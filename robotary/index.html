@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robot Terry — ClawBio</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a1a;
+  --card: #1a1a2e;
+  --accent: #00e5a0;
+  --active: #f0c040;
+  --error: #f85149;
+  --text: #c9d1d9;
+  --text-dim: #484f58;
+  --border: #30363d;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ── Layout ── */
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+}
+
+.chat-panel {
+  flex: 0 0 55%;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.brain-panel {
+  flex: 0 0 45%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+/* ── Chat Panel ── */
+.chat-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.chat-header h1 span {
+  color: var(--accent);
+}
+
+.chat-header p {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-behavior: smooth;
+}
+
+.messages::-webkit-scrollbar { width: 6px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.msg {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  line-height: 1.55;
+  font-size: 14px;
+  animation: msgIn 0.25s ease;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #0a0a1a;
+  border-bottom-right-radius: 4px;
+  font-weight: 500;
+}
+
+.msg.terry {
+  align-self: flex-start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.msg.terry p { margin-bottom: 8px; }
+.msg.terry p:last-child { margin-bottom: 0; }
+.msg.terry ul, .msg.terry ol { margin: 4px 0 8px 18px; }
+.msg.terry li { margin-bottom: 4px; }
+.msg.terry em { color: var(--text-dim); }
+.msg.terry strong { color: #fff; }
+.msg.terry code {
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.msg.terry .streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.input-bar {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  background: var(--bg);
+}
+
+.input-bar input {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-bar input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 229, 160, 0.15);
+}
+
+.input-bar input::placeholder { color: var(--text-dim); }
+
+.input-bar input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-bar button {
+  background: var(--accent);
+  color: #0a0a1a;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.input-bar button:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.input-bar button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.input-bar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.disclaimer {
+  padding: 8px 24px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.reconnect-banner {
+  display: none;
+  padding: 8px 24px;
+  background: rgba(248, 81, 73, 0.12);
+  color: var(--error);
+  font-size: 12px;
+  text-align: center;
+  border-bottom: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+.reconnect-banner.visible { display: block; }
+
+/* ── Brain Panel ── */
+.brain-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brain-header h2 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.brain-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.brain-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.brain-body::-webkit-scrollbar { width: 6px; }
+.brain-body::-webkit-scrollbar-track { background: transparent; }
+.brain-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Pipeline history */
+.pipeline-history .pipeline-run {
+  opacity: 0.4;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  transition: opacity 0.3s ease;
+}
+
+.pipeline-history .pipeline-run:hover { opacity: 0.7; }
+
+/* Pipeline */
+.pipeline { position: relative; }
+
+.pipeline .stage-connector {
+  position: absolute;
+  left: 15px;
+  top: 30px;
+  bottom: 30px;
+  width: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.stage-card {
+  position: relative;
+  z-index: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-dim);
+  border-radius: 8px;
+  padding: 12px 14px 12px 40px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+  user-select: none;
+}
+
+.stage-card:last-child { margin-bottom: 0; }
+
+.stage-card .stage-icon {
+  position: absolute;
+  left: 10px;
+  top: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--bg);
+  border: 2px solid var(--text-dim);
+  color: var(--text-dim);
+  transition: all 0.3s ease;
+}
+
+.stage-card .stage-name {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  transition: color 0.3s ease;
+}
+
+.stage-card .stage-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.3s ease;
+}
+
+/* Stage states */
+.stage-card.pending .stage-icon::after { content: "○"; }
+
+.stage-card.active {
+  border-left-color: var(--active);
+  box-shadow: 0 0 12px rgba(240, 192, 64, 0.08);
+}
+.stage-card.active .stage-icon {
+  border-color: var(--active);
+  color: var(--active);
+  animation: iconPulse 1.5s ease-in-out infinite;
+}
+.stage-card.active .stage-icon::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--active);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.stage-card.active .stage-name { color: var(--active); }
+.stage-card.active .stage-detail { color: var(--text); }
+
+@keyframes iconPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 192, 64, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(240, 192, 64, 0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.stage-card.done {
+  border-left-color: var(--accent);
+}
+.stage-card.done .stage-icon {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0, 229, 160, 0.08);
+}
+.stage-card.done .stage-icon::after { content: "✓"; }
+.stage-card.done .stage-name { color: var(--accent); }
+.stage-card.done .stage-detail { color: var(--text); }
+
+.stage-card.error {
+  border-left-color: var(--error);
+}
+.stage-card.error .stage-icon {
+  border-color: var(--error);
+  color: var(--error);
+  background: rgba(248, 81, 73, 0.08);
+}
+.stage-card.error .stage-icon::after { content: "✗"; }
+.stage-card.error .stage-name { color: var(--error); }
+.stage-card.error .stage-detail { color: var(--error); }
+
+/* Log area */
+.stage-log {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  margin-top: 0;
+}
+
+.stage-card.expanded .stage-log {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.stage-log::-webkit-scrollbar { width: 4px; }
+.stage-log::-webkit-scrollbar-track { background: transparent; }
+.stage-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.log-line {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+  animation: logFade 0.3s ease;
+  word-break: break-all;
+}
+
+.log-line .log-ts {
+  color: var(--text-dim);
+  opacity: 0.6;
+  margin-right: 6px;
+}
+
+@keyframes logFade {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Empty state */
+.brain-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  text-align: center;
+  gap: 12px;
+}
+
+.brain-empty .icon {
+  font-size: 36px;
+  opacity: 0.3;
+}
+
+.brain-empty p {
+  font-size: 12px;
+  max-width: 200px;
+  line-height: 1.5;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+    height: 100vh;
+  }
+  .chat-panel {
+    flex: 1 1 55%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .brain-panel {
+    flex: 1 1 45%;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Chat Panel -->
+  <div class="chat-panel">
+    <div class="reconnect-banner" id="reconnectBanner">
+      Reconnecting to server...
+    </div>
+    <div class="chat-header">
+      <h1>Welcome to <span>Robot Terry</span></h1>
+      <p>Ask about pharmacogenomics, nutrigenomics, risk scores, and more</p>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="input-bar">
+      <input type="text" id="input" placeholder="Ask Terry a question..." autocomplete="off" />
+      <button id="sendBtn" onclick="send()">Send</button>
+    </div>
+    <div class="disclaimer">
+      ClawBio is a research and educational tool. It is not a medical device and does not provide clinical diagnoses.
+    </div>
+  </div>
+
+  <!-- Brain Panel -->
+  <div class="brain-panel">
+    <div class="brain-header">
+      <div class="brain-dot"></div>
+      <h2>Terry Brain</h2>
+    </div>
+    <div class="brain-body" id="brainBody">
+      <div class="brain-empty" id="brainEmpty">
+        <div class="icon">&#x1f9e0;</div>
+        <p>Send a message to see Terry's reasoning pipeline in action</p>
+      </div>
+      <div class="pipeline-history" id="pipelineHistory"></div>
+      <div id="currentPipeline"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  const STAGES = [
+    { id: "route", name: "Route", detail: "Selecting skill..." },
+    { id: "load", name: "Load Data", detail: "Preparing input..." },
+    { id: "run", name: "Run Skill", detail: "Executing..." },
+    { id: "interpret", name: "Interpret", detail: "Generating response..." },
+  ];
+
+  const MAX_HISTORY = 10;
+
+  let ws = null;
+  let reconnectDelay = 1000;
+  let reconnectTimer = null;
+  let streamingBubble = null;
+  let streamingText = "";
+  let stageCards = {};
+
+  const $messages = document.getElementById("messages");
+  const $input = document.getElementById("input");
+  const $sendBtn = document.getElementById("sendBtn");
+  const $reconnect = document.getElementById("reconnectBanner");
+  const $brainBody = document.getElementById("brainBody");
+  const $brainEmpty = document.getElementById("brainEmpty");
+  const $history = document.getElementById("pipelineHistory");
+  const $currentPipeline = document.getElementById("currentPipeline");
+
+  // ── WebSocket ──
+
+  function connectWS() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(proto + "//" + location.host + "/ws");
+
+    ws.onopen = function() {
+      reconnectDelay = 1000;
+      $reconnect.classList.remove("visible");
+    };
+
+    ws.onmessage = function(e) {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch(_) { return; }
+      if (msg.type === "brain") handleBrain(msg);
+      else if (msg.type === "chat") handleChat(msg);
+    };
+
+    ws.onclose = function() {
+      scheduleReconnect();
+    };
+
+    ws.onerror = function() {
+      ws.close();
+    };
+  }
+
+  function scheduleReconnect() {
+    $reconnect.classList.add("visible");
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(function() {
+      connectWS();
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    }, reconnectDelay);
+  }
+
+  // ── Send ──
+
+  function send() {
+    var text = $input.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    addMessage(text, "user");
+    ws.send(JSON.stringify({ type: "message", content: text }));
+    $input.value = "";
+    setInputEnabled(false);
+    resetBrain();
+  }
+
+  window.send = send;
+
+  $input.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  function setInputEnabled(enabled) {
+    $input.disabled = !enabled;
+    $sendBtn.disabled = !enabled;
+    if (enabled) $input.focus();
+  }
+
+  // ── Chat Messages ──
+
+  function addMessage(text, role) {
+    var div = document.createElement("div");
+    div.className = "msg " + role;
+    if (role === "user") {
+      div.textContent = text;
+    } else {
+      div.innerHTML = text;
+    }
+    $messages.appendChild(div);
+    scrollMessages();
+    return div;
+  }
+
+  function scrollMessages() {
+    $messages.scrollTop = $messages.scrollHeight;
+  }
+
+  function handleChat(msg) {
+    if (msg.done) {
+      // Finalize streaming bubble
+      if (streamingBubble) {
+        streamingBubble.innerHTML = marked.parse(streamingText);
+        streamingBubble = null;
+        streamingText = "";
+        scrollMessages();
+      }
+      setInputEnabled(true);
+      return;
+    }
+
+    if (!streamingBubble) {
+      streamingBubble = document.createElement("div");
+      streamingBubble.className = "msg terry";
+      $messages.appendChild(streamingBubble);
+    }
+
+    streamingText += (msg.content || "");
+    // Show partial markdown + cursor
+    streamingBubble.innerHTML = marked.parse(streamingText) + '<span class="streaming-cursor"></span>';
+    scrollMessages();
+  }
+
+  // ── Brain Pipeline ──
+
+  function resetBrain() {
+    $brainEmpty.style.display = "none";
+
+    // Move current pipeline to history
+    if ($currentPipeline.children.length > 0) {
+      var hist = document.createElement("div");
+      hist.className = "pipeline-run";
+      while ($currentPipeline.firstChild) {
+        hist.appendChild($currentPipeline.firstChild);
+      }
+      $history.appendChild(hist);
+
+      // Collapse logs in historical run
+      var cards = hist.querySelectorAll(".stage-card");
+      for (var i = 0; i < cards.length; i++) {
+        cards[i].classList.remove("expanded");
+      }
+
+      // Trim history
+      while ($history.children.length > MAX_HISTORY) {
+        $history.removeChild($history.firstChild);
+      }
+    }
+
+    // Create fresh pipeline
+    stageCards = {};
+    var pipeline = document.createElement("div");
+    pipeline.className = "pipeline";
+
+    var connector = document.createElement("div");
+    connector.className = "stage-connector";
+    pipeline.appendChild(connector);
+
+    for (var i = 0; i < STAGES.length; i++) {
+      var s = STAGES[i];
+      var card = document.createElement("div");
+      card.className = "stage-card pending";
+      card.setAttribute("data-stage", s.id);
+
+      card.innerHTML =
+        '<div class="stage-icon"></div>' +
+        '<div class="stage-name">' + escapeHtml(s.name) + '</div>' +
+        '<div class="stage-detail">' + escapeHtml(s.detail) + '</div>' +
+        '<div class="stage-log"></div>';
+
+      card.addEventListener("click", toggleExpand);
+      pipeline.appendChild(card);
+      stageCards[s.id] = card;
+    }
+
+    $currentPipeline.appendChild(pipeline);
+
+    // Scroll brain body to bottom
+    $brainBody.scrollTop = $brainBody.scrollHeight;
+  }
+
+  function handleBrain(msg) {
+    var card = stageCards[msg.stage];
+    if (!card) return;
+
+    // Update state
+    card.className = "stage-card " + msg.status;
+
+    // Auto-expand active stages
+    if (msg.status === "active") {
+      card.classList.add("expanded");
+    }
+
+    // Update detail text
+    if (msg.log) {
+      var detail = card.querySelector(".stage-detail");
+      detail.textContent = msg.log;
+      detail.title = msg.log;
+
+      // Append to log area
+      var logArea = card.querySelector(".stage-log");
+      var logLine = document.createElement("div");
+      logLine.className = "log-line";
+
+      var ts = document.createElement("span");
+      ts.className = "log-ts";
+      var now = new Date();
+      ts.textContent = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+
+      logLine.appendChild(ts);
+      logLine.appendChild(document.createTextNode(msg.log));
+      logArea.appendChild(logLine);
+
+      // Auto-scroll log area
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // Scroll brain body
+    $brainBody.scrollTop = $brainBody.scrollHeight;
+  }
+
+  function toggleExpand(e) {
+    // Don't toggle if clicking inside the log area scrollbar
+    var card = e.currentTarget;
+    card.classList.toggle("expanded");
+  }
+
+  // ── Utilities ──
+
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function escapeHtml(s) {
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ── Init ──
+  connectWS();
+  $input.focus();
+
+})();
+</script>
+</body>
+</html>
