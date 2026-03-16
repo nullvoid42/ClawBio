@@ -171,6 +171,7 @@ Operational constraints:
 1. You are a bioinformatics assistant powered by ClawBio skills.
 2. Keep outputs concise, evidence-led, and explicit about confidence and gaps.
 3. When the user sends a genetic data file (23andMe .txt, AncestryDNA .csv, VCF, FASTQ) or asks about pharmacogenomics, nutrigenomics, equity scoring, metagenomics, or genome comparison, use the clawbio tool. When the user asks about disease risk, polygenic risk scores, or "what am I at risk for", use skill='prs'. For a unified profile report use skill='profile'. For gene-drug database lookups use skill='clinpgx'. For variant lookups (rsID, "look up rs...") use skill='gwas'. For quick demos say "run pharmgx demo", "run prs demo", "run profile demo" etc. Reports and figures are sent automatically after your summary.
+   QUERY ROUTING: When the user asks broad questions like "what variants do I have?", "show me my results", "what does my genome say?", "my genetic profile", or "what did you find?" — use skill='profile' to run the unified profile report. When they ask about specific drug interactions or "what medications", use skill='pharmgx'. When they ask "what should I eat" or about nutrition, use skill='nutrigx'. Always route to a skill — never say you don't know which skill to use.
 4. TOOL OUTPUT RELAY (STRICT): When the clawbio tool returns results, relay the output VERBATIM. Do not paraphrase, summarise, or rewrite tool results. Tool outputs contain precise data (IBS scores, percentages, gene-drug interactions) that must not be altered. You may add a brief intro line before the verbatim output but never replace or condense it.
 5. OWNER GENOME: The bot owner (admin) has their genome pre-loaded. When the admin asks about "my pharmacogenomics", "my risk", "my nutrition", "my genome", or similar personal queries WITHOUT uploading a file, use mode='file' — the system will automatically use the owner's genome. Do NOT ask the admin to upload a file.
 6. DEMO FALLBACK: When a non-admin user asks about pharmacogenomics, nutrigenomics, risk scores, or any skill that needs genetic data but has NOT uploaded a file, do NOT just ask for a file and stop. Instead, offer to run the demo with built-in synthetic data (mode='demo') so they can see the skill in action. Example: "I can run a demo with synthetic data so you can see what the report looks like — shall I go ahead?" If they agree (or if the request is clearly exploratory), run it immediately.
@@ -198,6 +199,35 @@ _pending_media: dict[int, list[dict]] = {}
 
 # Pending text queue: bypass LLM paraphrasing for compare/drugphoto
 _pending_text: list[str] = []
+
+
+# Per-user consent tiers for sensitive result disclosure
+# Tier 1 (default): general results (ancestry, nutrition, standard drugs)
+# Tier 2 (requires consent): caution/avoid drugs, pathogenic variants
+# Tier 3 (requires consent): PRS, polygenic risk percentiles
+_user_consent: dict[int, int] = {}
+
+CONSENT_PROMPT_SENSITIVE = (
+    "The results include sensitive information about drug interactions "
+    "that may require avoiding certain medications, and potentially "
+    "pathogenic genetic variants.\n\n"
+    "Before I show you these results, I need your informed consent. "
+    "This information is for educational and research purposes only "
+    "and should not replace professional medical advice.\n\n"
+    "Would you like to see these sensitive results? "
+    "Reply 'yes I consent' to proceed."
+)
+
+CONSENT_PROMPT_PRS = (
+    "The results include polygenic risk scores (PRS) -- statistical "
+    "estimates of disease risk based on multiple genetic variants. "
+    "These scores reflect population-level associations and may not "
+    "accurately predict individual outcomes.\n\n"
+    "PRS results can cause anxiety and may be misinterpreted without "
+    "professional guidance. This is not a clinical diagnosis.\n\n"
+    "Would you like to see your polygenic risk scores? "
+    "Reply 'yes I consent' to proceed."
+)
 
 BOT_START_TIME = time.time()
 
@@ -419,6 +449,7 @@ async def execute_clawbio(args: dict) -> str:
     mode = args.get("mode", "demo")
     query = args.get("query", "")
 
+
     # Auto-routing via orchestrator
     if skill_key == "auto":
         orch_script = CLAWBIO_DIR / "skills" / "bio-orchestrator" / "orchestrator.py"
@@ -631,6 +662,106 @@ async def execute_clawbio(args: dict) -> str:
             keep_lines.append(line)
 
     return "\n".join(keep_lines).strip()
+
+
+# --------------------------------------------------------------------------- #
+# Consent gate — redact sensitive results until user consents
+# --------------------------------------------------------------------------- #
+
+# Sections in reports that require tier 2 (sensitive) consent
+_TIER2_SECTION_STARTS = [
+    "### Actionable Alerts",
+    "**AVOID",
+    "**USE WITH CAUTION",
+    "## DATA QUALITY WARNING",
+]
+
+# Sections that require tier 3 (research/PRS) consent
+_TIER3_SECTION_STARTS = [
+    "## Polygenic Risk Score",
+    "## PRS Results",
+    "### Risk Category",
+    "## Risk Score",
+]
+
+# Pending consent: chat_id -> (tier_needed, redacted_report)
+_pending_consent: dict[int, tuple[int, str]] = {}
+
+
+def _get_user_tier(chat_id: int) -> int:
+    """Get the highest consent tier a user has unlocked."""
+    return _user_consent.get(chat_id, 1)
+
+
+def _consent_filter_report(report: str, skill_key: str, chat_id: int) -> str:
+    """Redact sensitive sections from a report based on user consent tier.
+
+    Returns the filtered report, or a consent prompt if sensitive data
+    was found and the user hasn't consented.
+    """
+    user_tier = _get_user_tier(chat_id)
+
+    # Determine what tier this report needs
+    report_lower = report.lower()
+    needs_tier = 1
+
+    # Check for PRS content (tier 3)
+    if skill_key == "prs" or any(
+        h.lower() in report_lower for h in _TIER3_SECTION_STARTS
+    ):
+        needs_tier = max(needs_tier, 3)
+
+    # Check for avoid/caution drugs or pathogenic variants (tier 2)
+    if any(h.lower() in report_lower for h in _TIER2_SECTION_STARTS):
+        needs_tier = max(needs_tier, 2)
+
+    # User has sufficient consent
+    if user_tier >= needs_tier:
+        return report
+
+    # Store the full report for after consent
+    _pending_consent[chat_id] = (needs_tier, report)
+
+    if needs_tier >= 3:
+        return CONSENT_PROMPT_PRS
+    return CONSENT_PROMPT_SENSITIVE
+
+
+def _check_consent_response(text: str, chat_id: int) -> str | None:
+    """Check if the user is responding to a consent prompt.
+
+    Returns the previously redacted report if consent is granted, or None.
+    """
+    if chat_id not in _pending_consent:
+        return None
+
+    text_lower = text.lower().strip()
+    consent_phrases = [
+        "yes i consent",
+        "i consent",
+        "yes, i consent",
+        "consent",
+        "yes",
+        "i agree",
+        "show me",
+        "go ahead",
+        "proceed",
+    ]
+
+    if any(phrase in text_lower for phrase in consent_phrases):
+        tier_needed, report = _pending_consent.pop(chat_id)
+        _user_consent[chat_id] = max(_get_user_tier(chat_id), tier_needed)
+        _audit("consent_granted", chat_id=chat_id, tier=tier_needed)
+        logger.info(f"Consent granted for chat {chat_id}, tier {tier_needed}")
+        return report
+
+    decline_phrases = ["no", "decline", "skip", "don't show", "cancel"]
+    if any(phrase in text_lower for phrase in decline_phrases):
+        _pending_consent.pop(chat_id)
+        _audit("consent_declined", chat_id=chat_id)
+        return None  # let normal message handling proceed
+
+    return None  # not a consent response, let normal flow continue
 
 
 # --------------------------------------------------------------------------- #
@@ -1309,18 +1440,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_text = update.message.text
+    chat_id = update.effective_chat.id
     logger.info(f"Message from {update.effective_user.first_name}: {user_text[:100]}")
     _audit("message", **_user_ctx(update), text_preview=user_text[:200],
            text_len=len(user_text))
 
+    # Check if this is a response to a consent prompt
+    consent_report = _check_consent_response(user_text, chat_id)
+    if consent_report is not None:
+        await send_long_message(update, consent_report)
+        await _drain_pending_media(update, context)
+        return
+    # If user declined, _check_consent_response returns None and we fall through
+
     try:
         await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, action="typing"
+            chat_id=chat_id, action="typing"
         )
-        reply = await llm_tool_loop(update.effective_chat.id, user_text)
+        reply = await llm_tool_loop(chat_id, user_text)
         if _pending_text:
             reply = "\n\n".join(_pending_text)
             _pending_text.clear()
+
+        # Apply consent gate — redact PRS/severe variants if not consented
+        reply = _consent_filter_report(reply, "", chat_id)
         await send_long_message(update, reply)
         await _drain_pending_media(update, context)
 

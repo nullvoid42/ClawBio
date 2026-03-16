@@ -230,6 +230,134 @@ _pending_text: list[str] = []
 # Per-user voice reply toggle: user_id -> bool
 _voice_enabled: dict[int, bool] = {}
 
+# --------------------------------------------------------------------------- #
+# Consent gate — mirrors roboterri.py (Telegram) implementation
+# --------------------------------------------------------------------------- #
+
+# Per-user consent tiers for sensitive result disclosure
+# Tier 1 (default): general results (ancestry, nutrition, standard drugs)
+# Tier 2 (requires consent): caution/avoid drugs, pathogenic variants
+# Tier 3 (requires consent): PRS, polygenic risk percentiles
+_user_consent: dict[int, int] = {}
+
+CONSENT_PROMPT_SENSITIVE = (
+    "The results include sensitive information about drug interactions "
+    "that may require avoiding certain medications, and potentially "
+    "pathogenic genetic variants.\n\n"
+    "Before I show you these results, I need your informed consent. "
+    "This information is for educational and research purposes only "
+    "and should not replace professional medical advice.\n\n"
+    "Would you like to see these sensitive results? "
+    "Reply 'yes I consent' to proceed."
+)
+
+CONSENT_PROMPT_PRS = (
+    "The results include polygenic risk scores (PRS) -- statistical "
+    "estimates of disease risk based on multiple genetic variants. "
+    "These scores reflect population-level associations and may not "
+    "accurately predict individual outcomes.\n\n"
+    "PRS results can cause anxiety and may be misinterpreted without "
+    "professional guidance. This is not a clinical diagnosis.\n\n"
+    "Would you like to see your polygenic risk scores? "
+    "Reply 'yes I consent' to proceed."
+)
+
+# Sections in reports that require tier 2 (sensitive) consent
+_TIER2_SECTION_STARTS = [
+    "### Actionable Alerts",
+    "**AVOID",
+    "**USE WITH CAUTION",
+    "## DATA QUALITY WARNING",
+]
+
+# Sections that require tier 3 (research/PRS) consent
+_TIER3_SECTION_STARTS = [
+    "## Polygenic Risk Score",
+    "## PRS Results",
+    "### Risk Category",
+    "## Risk Score",
+]
+
+# Pending consent: channel_id -> (tier_needed, full_report)
+_pending_consent: dict[int, tuple[int, str]] = {}
+
+
+def _get_user_tier(channel_id: int) -> int:
+    """Get the highest consent tier a user has unlocked."""
+    return _user_consent.get(channel_id, 1)
+
+
+def _consent_filter_report(report: str, skill_key: str, channel_id: int) -> str:
+    """Redact sensitive sections from a report based on user consent tier.
+
+    Returns the filtered report, or a consent prompt if sensitive data
+    was found and the user hasn't consented.
+    """
+    user_tier = _get_user_tier(channel_id)
+
+    # Determine what tier this report needs
+    report_lower = report.lower()
+    needs_tier = 1
+
+    # Check for PRS content (tier 3)
+    if skill_key == "prs" or any(
+        h.lower() in report_lower for h in _TIER3_SECTION_STARTS
+    ):
+        needs_tier = max(needs_tier, 3)
+
+    # Check for avoid/caution drugs or pathogenic variants (tier 2)
+    if any(h.lower() in report_lower for h in _TIER2_SECTION_STARTS):
+        needs_tier = max(needs_tier, 2)
+
+    # User has sufficient consent
+    if user_tier >= needs_tier:
+        return report
+
+    # Store the full report for after consent
+    _pending_consent[channel_id] = (needs_tier, report)
+
+    if needs_tier >= 3:
+        return CONSENT_PROMPT_PRS
+    return CONSENT_PROMPT_SENSITIVE
+
+
+def _check_consent_response(text: str, channel_id: int) -> str | None:
+    """Check if the user is responding to a consent prompt.
+
+    Returns the previously redacted report if consent is granted, or None.
+    """
+    if channel_id not in _pending_consent:
+        return None
+
+    text_lower = text.lower().strip()
+    consent_phrases = [
+        "yes i consent",
+        "i consent",
+        "yes, i consent",
+        "consent",
+        "yes",
+        "i agree",
+        "show me",
+        "go ahead",
+        "proceed",
+    ]
+
+    if any(phrase in text_lower for phrase in consent_phrases):
+        tier_needed, report = _pending_consent.pop(channel_id)
+        _user_consent[channel_id] = max(_get_user_tier(channel_id), tier_needed)
+        _audit("consent_granted", channel_id=channel_id, tier=tier_needed)
+        logger.info(f"Consent granted for channel {channel_id}, tier {tier_needed}")
+        return report
+
+    decline_phrases = ["no", "decline", "skip", "don't show", "cancel"]
+    if any(phrase in text_lower for phrase in decline_phrases):
+        _pending_consent.pop(channel_id)
+        _audit("consent_declined", channel_id=channel_id)
+        return None  # let normal message handling proceed
+
+    return None  # not a consent response, let normal flow continue
+
+
 BOT_START_TIME = time.time()
 
 # --------------------------------------------------------------------------- #
@@ -1550,12 +1678,24 @@ async def on_message(message: discord.Message):
     _audit("message", **_user_ctx(message), text_preview=user_text[:200],
            text_len=len(user_text))
 
+    # Check if this is a response to a consent prompt
+    channel_id = message.channel.id
+    consent_report = _check_consent_response(user_text, channel_id)
+    if consent_report is not None:
+        await send_long_message(message.channel, consent_report)
+        await drain_pending_media(message.channel)
+        return
+    # If user declined, _check_consent_response returns None and we fall through
+
     async with message.channel.typing():
         try:
-            reply = await llm_tool_loop(message.channel.id, user_text)
+            reply = await llm_tool_loop(channel_id, user_text)
             if _pending_text:
                 reply = "\n\n".join(_pending_text)
                 _pending_text.clear()
+
+            # Apply consent gate — redact PRS/severe variants if not consented
+            reply = _consent_filter_report(reply, "", channel_id)
             await send_long_message(message.channel, reply)
             await drain_pending_media(message.channel)
             # Voice reply if toggled on

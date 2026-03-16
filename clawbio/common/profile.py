@@ -31,6 +31,7 @@ class PatientProfile:
         genotypes: dict[str, dict] | None = None,
         ancestry: dict | None = None,
         skill_results: dict[str, Any] | None = None,
+        consent_tiers: list[int] | None = None,
     ):
         self.metadata = {
             "patient_id": patient_id,
@@ -41,6 +42,11 @@ class PatientProfile:
         self._genotypes: dict[str, dict] = genotypes or {}
         self.ancestry: dict | None = ancestry
         self.skill_results: dict[str, Any] = skill_results or {}
+        self._consent: dict = consent_tiers if isinstance(consent_tiers, dict) else {
+            "tiers_unlocked": [1],
+            "unlocked_at": {},
+            "revoked_at": {},
+        }
 
     # --- Construction from file ---
 
@@ -96,6 +102,37 @@ class PatientProfile:
             for rsid, rec in targets
         }
 
+    # --- Consent tiers ---
+
+    def tier_unlocked(self) -> int:
+        """Return the highest consent tier the user has unlocked."""
+        tiers = self._consent.get("tiers_unlocked", [1])
+        return max(tiers) if tiers else 0
+
+    def unlock_tier(self, tier: int) -> None:
+        """Grant consent for a tier. Tier 3 requires tier 2 first."""
+        tiers = self._consent.get("tiers_unlocked", [1])
+        if tier >= 3 and 2 not in tiers:
+            raise ValueError("Cannot unlock tier 3 — tier 2 must be unlocked first.")
+        if tier not in tiers:
+            tiers.append(tier)
+            self._consent["tiers_unlocked"] = tiers
+            unlocked_at = self._consent.setdefault("unlocked_at", {})
+            unlocked_at[str(tier)] = datetime.now(timezone.utc).isoformat()
+
+    def revoke_tier(self, tier: int) -> None:
+        """Revoke consent for a tier (and all higher tiers)."""
+        tiers = self._consent.get("tiers_unlocked", [1])
+        self._consent["tiers_unlocked"] = [t for t in tiers if t < tier]
+        if not self._consent["tiers_unlocked"]:
+            self._consent["tiers_unlocked"] = [1]
+        revoked_at = self._consent.setdefault("revoked_at", {})
+        revoked_at[str(tier)] = datetime.now(timezone.utc).isoformat()
+
+    def get_consent(self) -> dict:
+        """Return the full consent state dict."""
+        return self._consent
+
     # --- Skill results ---
 
     def add_skill_result(self, skill_name: str, result_dict: dict) -> None:
@@ -124,6 +161,7 @@ class PatientProfile:
             "genotypes": self._genotypes,
             "ancestry": self.ancestry,
             "skill_results": self.skill_results,
+            "consent": self._consent,
         }
         path.write_text(json.dumps(data, indent=2, default=str))
         return path
@@ -142,6 +180,7 @@ class PatientProfile:
             genotypes=data.get("genotypes"),
             ancestry=data.get("ancestry"),
             skill_results=data.get("skill_results"),
+            consent_tiers=data.get("consent"),
         )
 
     def __repr__(self) -> str:

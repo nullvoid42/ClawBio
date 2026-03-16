@@ -218,6 +218,133 @@ _processed_messages_max = 1000
 
 BOT_START_TIME = time.time()
 
+# --------------------------------------------------------------------------- #
+# Consent gate — tiered disclosure for sensitive results
+# --------------------------------------------------------------------------- #
+
+# Per-user consent tiers for sensitive result disclosure
+# Tier 1 (default): general results (ancestry, nutrition, standard drugs)
+# Tier 2 (requires consent): caution/avoid drugs, pathogenic variants
+# Tier 3 (requires consent): PRS, polygenic risk percentiles
+_user_consent: dict[str, int] = {}
+
+CONSENT_PROMPT_SENSITIVE = (
+    "The results include sensitive information about drug interactions "
+    "that may require avoiding certain medications, and potentially "
+    "pathogenic genetic variants.\n\n"
+    "Before I show you these results, I need your informed consent. "
+    "This information is for educational and research purposes only "
+    "and should not replace professional medical advice.\n\n"
+    "Would you like to see these sensitive results? "
+    "Reply 'yes I consent' to proceed."
+)
+
+CONSENT_PROMPT_PRS = (
+    "The results include polygenic risk scores (PRS) -- statistical "
+    "estimates of disease risk based on multiple genetic variants. "
+    "These scores reflect population-level associations and may not "
+    "accurately predict individual outcomes.\n\n"
+    "PRS results can cause anxiety and may be misinterpreted without "
+    "professional guidance. This is not a clinical diagnosis.\n\n"
+    "Would you like to see your polygenic risk scores? "
+    "Reply 'yes I consent' to proceed."
+)
+
+# Sections in reports that require tier 2 (sensitive) consent
+_TIER2_SECTION_STARTS = [
+    "### Actionable Alerts",
+    "**AVOID",
+    "**USE WITH CAUTION",
+    "## DATA QUALITY WARNING",
+]
+
+# Sections that require tier 3 (research/PRS) consent
+_TIER3_SECTION_STARTS = [
+    "## Polygenic Risk Score",
+    "## PRS Results",
+    "### Risk Category",
+    "## Risk Score",
+]
+
+# Pending consent: phone -> (tier_needed, full_report)
+_pending_consent: dict[str, tuple[int, str]] = {}
+
+
+def _get_user_tier(phone: str) -> int:
+    """Get the highest consent tier a user has unlocked."""
+    return _user_consent.get(phone, 1)
+
+
+def _consent_filter_report(report: str, skill_key: str, phone: str) -> str:
+    """Redact sensitive sections from a report based on user consent tier.
+
+    Returns the filtered report, or a consent prompt if sensitive data
+    was found and the user hasn't consented.
+    """
+    user_tier = _get_user_tier(phone)
+
+    # Determine what tier this report needs
+    report_lower = report.lower()
+    needs_tier = 1
+
+    # Check for PRS content (tier 3)
+    if skill_key == "prs" or any(
+        h.lower() in report_lower for h in _TIER3_SECTION_STARTS
+    ):
+        needs_tier = max(needs_tier, 3)
+
+    # Check for avoid/caution drugs or pathogenic variants (tier 2)
+    if any(h.lower() in report_lower for h in _TIER2_SECTION_STARTS):
+        needs_tier = max(needs_tier, 2)
+
+    # User has sufficient consent
+    if user_tier >= needs_tier:
+        return report
+
+    # Store the full report for after consent
+    _pending_consent[phone] = (needs_tier, report)
+
+    if needs_tier >= 3:
+        return CONSENT_PROMPT_PRS
+    return CONSENT_PROMPT_SENSITIVE
+
+
+def _check_consent_response(text: str, phone: str) -> str | None:
+    """Check if the user is responding to a consent prompt.
+
+    Returns the previously redacted report if consent is granted, or None.
+    """
+    if phone not in _pending_consent:
+        return None
+
+    text_lower = text.lower().strip()
+    consent_phrases = [
+        "yes i consent",
+        "i consent",
+        "yes, i consent",
+        "consent",
+        "yes",
+        "i agree",
+        "show me",
+        "go ahead",
+        "proceed",
+    ]
+
+    if any(phrase in text_lower for phrase in consent_phrases):
+        tier_needed, report = _pending_consent.pop(phone)
+        _user_consent[phone] = max(_get_user_tier(phone), tier_needed)
+        _audit("consent_granted", phone=phone, tier=tier_needed)
+        logger.info(f"Consent granted for {phone}, tier {tier_needed}")
+        return report
+
+    decline_phrases = ["no", "decline", "skip", "don't show", "cancel"]
+    if any(phrase in text_lower for phrase in decline_phrases):
+        _pending_consent.pop(phone)
+        _audit("consent_declined", phone=phone)
+        return None  # let normal message handling proceed
+
+    return None  # not a consent response, let normal flow continue
+
 # Async event loop for running coroutines from Flask threads
 _loop = asyncio.new_event_loop()
 _loop_thread = threading.Thread(target=_loop.run_forever, daemon=True)
@@ -1276,6 +1403,14 @@ def handle_whatsapp_message(phone: str, msg: dict):
 
         logger.info(f"Message from {phone}: {text[:100]}")
 
+        # Check if this is a response to a consent prompt
+        consent_report = _check_consent_response(text, phone)
+        if consent_report is not None:
+            wa_send_text(phone, consent_report)
+            drain_pending_media(phone)
+            return
+        # If user declined, _check_consent_response returns None and we fall through
+
         # Commands
         text_lower = text.lower().strip()
 
@@ -1379,6 +1514,8 @@ def handle_whatsapp_message(phone: str, msg: dict):
                 if _pending_text:
                     reply = "\n\n".join(_pending_text)
                     _pending_text.clear()
+                # Apply consent gate — redact PRS/severe variants if not consented
+                reply = _consent_filter_report(reply, "", phone)
                 wa_send_text(phone, reply)
                 drain_pending_media(phone)
                 if _voice_enabled.get(phone):
@@ -1397,6 +1534,8 @@ def handle_whatsapp_message(phone: str, msg: dict):
             if _pending_text:
                 reply = "\n\n".join(_pending_text)
                 _pending_text.clear()
+            # Apply consent gate — redact PRS/severe variants if not consented
+            reply = _consent_filter_report(reply, "", phone)
             wa_send_text(phone, reply)
             drain_pending_media(phone)
             if _voice_enabled.get(phone):
@@ -1469,6 +1608,8 @@ def handle_whatsapp_message(phone: str, msg: dict):
             if _pending_text:
                 reply = "\n\n".join(_pending_text)
                 _pending_text.clear()
+            # Apply consent gate — redact PRS/severe variants if not consented
+            reply = _consent_filter_report(reply, "", phone)
             wa_send_text(phone, reply)
             if _voice_enabled.get(phone):
                 try:
@@ -1517,6 +1658,8 @@ def handle_whatsapp_message(phone: str, msg: dict):
                 if _pending_text:
                     reply = "\n\n".join(_pending_text)
                     _pending_text.clear()
+                # Apply consent gate — redact PRS/severe variants if not consented
+                reply = _consent_filter_report(reply, "", phone)
                 wa_send_text(phone, reply)
             except Exception as e:
                 wa_send_text(phone, f"Sorry, couldn't process that image -- {e}")
@@ -1590,6 +1733,8 @@ def handle_whatsapp_message(phone: str, msg: dict):
             if _pending_text:
                 reply = "\n\n".join(_pending_text)
                 _pending_text.clear()
+            # Apply consent gate — redact PRS/severe variants if not consented
+            reply = _consent_filter_report(reply, "", phone)
             wa_send_text(phone, reply)
             drain_pending_media(phone)
             if _voice_enabled.get(phone):
