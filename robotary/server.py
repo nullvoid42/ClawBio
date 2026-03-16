@@ -1,10 +1,13 @@
-"""Robotary — Robot Terry web interface for ClawBio skills.
+"""Robotary — Robot Terri web interface for ClawBio skills.
 
 Run:
     python robotary/server.py
     # → http://localhost:5112
 """
 from __future__ import annotations
+
+import dotenv
+dotenv.load_dotenv()
 
 import asyncio
 import json
@@ -47,6 +50,22 @@ CORE_SKILLS = {
     "gwas-prs", "clinpgx", "gwas-lookup", "profile-report",
 }
 
+INTRO_MESSAGE = """Hey! I'm **Robot Terri** — your bioinformatics assistant powered by ClawBio.
+
+I've got **Manuel Corpas's genome** loaded and ready to analyse. Here's what I can do:
+
+| Skill | What it does | Try asking... |
+|---|---|---|
+| **Pharmacogenomics** | Drug-gene interactions & metabolism | *"What medications should I worry about?"* |
+| **Nutrigenomics** | Diet & nutrition genetics | *"What should I eat based on my genes?"* |
+| **Genome Compare** | Compare DNA to George Church | *"How similar am I to George Church?"* |
+| **Polygenic Risk** | Disease risk scores | *"What's my risk for type 2 diabetes?"* |
+| **ClinPGx** | Gene-drug database lookup | *"Look up CYP2D6 drug interactions"* |
+| **GWAS Lookup** | Variant search across databases | *"Look up rs3798220"* |
+| **Profile Report** | Full genomic profile summary | *"Give me a full profile report"* |
+
+Just ask a question and I'll route it to the right skill!"""
+
 
 def build_skill_catalog() -> dict[str, str]:
     """Discover skills by scanning skills/*/SKILL.md. Returns {name: description}."""
@@ -87,6 +106,15 @@ if not LLM_API_KEY:
 ROUTING_PROMPT = """You are a skill router for ClawBio, a bioinformatics agent.
 Given a user query, pick the single best skill to handle it.
 
+IMPORTANT: Always try to match a skill. Be generous — if the query is even loosely related to genomics, health, medications, diet, ancestry, or risk, pick the best-fit skill. For vague or broad queries (e.g. "what can you tell me about my genome", "analyse my data", "what medications should I worry about"), pick the most relevant skill. Only return null if the query is completely unrelated to biology or genomics (e.g. "what's the weather").
+
+Default skill preferences for vague queries:
+- General health/medications → pharmgx-reporter
+- General diet/nutrition → nutrigx_advisor
+- General risk/disease → gwas-prs
+- General genome/DNA → profile-report
+- "What can you do" / overview → profile-report
+
 Available skills:
 {skills}
 
@@ -94,7 +122,7 @@ Respond with ONLY a JSON object:
 {{"skill": "<skill-name>", "confidence": <0-1>, "reasoning": "<one sentence>", "params": {{<skill-specific params>}}}}
 
 Param extraction rules:
-- gwas-prs: extract {{"trait": "<disease/trait name>"}} from the query
+- gwas-prs: extract {{"trait": "<disease/trait name>"}} from the query. If no specific trait, use {{"trait": "type 2 diabetes"}} as default.
 - clinpgx: extract {{"gene": "<gene symbol>"}} if mentioned, else empty
 - gwas-lookup: extract {{"rsid": "<rs number>"}} if mentioned, else empty
 - All other skills: params should be {{}}
@@ -102,6 +130,21 @@ Param extraction rules:
 If no skill matches, respond: {{"skill": null, "confidence": 0, "reasoning": "<why>", "params": {{}}}}""".format(
     skills="\n".join(f"- {name}: {desc}" for name, desc in SKILL_CATALOG.items())
 )
+
+
+import re
+
+_INTRO_PATTERNS = re.compile(
+    r"(^hi$|^hey|^hello|what can you do|what skills|help me|"
+    r"who are you|what are you|introduce|overview|getting started|"
+    r"how does this work|what do you know)",
+    re.IGNORECASE,
+)
+
+
+def is_intro_query(query: str) -> bool:
+    """Check if query is a greeting or request for overview."""
+    return bool(_INTRO_PATTERNS.search(query.strip()))
 
 
 async def llm_chat(messages: list[dict], max_tokens: int = 300) -> dict:
@@ -230,7 +273,7 @@ async def run_skill(skill_dir_name: str, params: dict, on_log: callable) -> dict
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-INTERPRET_SYSTEM = """You are Robot Terry, a friendly bioinformatics assistant.
+INTERPRET_SYSTEM = """You are Robot Terri, a friendly bioinformatics assistant.
 Summarise this genomic report conversationally. Be direct and helpful.
 
 Rules:
@@ -331,6 +374,16 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
 
             async with _run_lock:
+                # ── Intro shortcut (no LLM needed) ──
+                if is_intro_query(query):
+                    await send_brain("route", "done", "→ introduction")
+                    await send_brain("load", "done", "No data needed")
+                    await send_brain("run", "done", "Showing skill catalog")
+                    await send_brain("interpret", "done", "Ready")
+                    await send_chat(INTRO_MESSAGE)
+                    await send_chat("", done=True)
+                    continue
+
                 # ── Stage 1: Route ──
                 await send_brain("route", "active", "Routing query...")
                 try:
@@ -344,17 +397,13 @@ async def websocket_endpoint(ws: WebSocket):
                         await send_brain("route", "done",
                                          f"→ {skill} ({confidence:.2f}) — {reasoning}")
                     else:
-                        await send_brain("route", "error", f"No skill matched: {reasoning}")
-                        await send_chat(
-                            f"I'm not sure which skill to use for that. {reasoning}\n\n"
-                            f"I can help with: pharmacogenomics, nutrigenomics, genome comparison, "
-                            f"polygenic risk scores, gene-drug lookup, variant search, and profile reports.",
-                        )
+                        await send_brain("route", "done", "→ introduction (no skill matched)")
+                        await send_chat(INTRO_MESSAGE)
                         await send_chat("", done=True)
                         continue
                 except Exception as e:
                     await send_brain("route", "error", f"Routing failed: {e}")
-                    await send_chat("Something went wrong routing your question. Please try again.")
+                    await send_chat(INTRO_MESSAGE)
                     await send_chat("", done=True)
                     continue
 
@@ -418,7 +467,7 @@ async def websocket_endpoint(ws: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     print("=" * 50)
-    print("  Robotary — Robot Terry")
+    print("  Robotary — Robot Terri")
     print(f"  Skills loaded: {len(SKILL_CATALOG)}")
     print(f"  Genome: {GENOME_PATH.name}")
     print("  Open http://localhost:5112")
