@@ -473,6 +473,23 @@ SKILLS = {
         },
         "accepts_genotypes": False,
     },
+    "protocols-io": {
+        "script": SKILLS_DIR / "protocols-io" / "protocols_io.py",
+        "demo_args": ["--demo"],
+        "description": "protocols.io bridge — search, browse, and retrieve scientific protocols via REST API",
+        "allowed_extra_flags": {
+            "--login",
+            "--search",
+            "--protocol",
+            "--steps",
+            "--dump",
+            "--page-size",
+            "--page",
+            "--filter",
+        },
+        "no_input_required": True,
+        "accepts_genotypes": False,
+    },
 }
 
 # Skills that run in the full-profile pipeline (order matters)
