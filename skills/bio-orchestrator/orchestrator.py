@@ -150,6 +150,16 @@ KEYWORD_MAP: dict[str, str] = {
     "ma plot": "rnaseq-de",
     "contrast": "rnaseq-de",
     "count matrix": "rnaseq-de",
+    "snack photo": "nutridex",
+    "crisp packet": "nutridex",
+    "food ingredients": "nutridex",
+    "e-numbers": "nutridex",
+    "what am i eating": "nutridex",
+    "food label": "nutridex",
+    "ultra-processed": "nutridex",
+    "years off my life": "nutridex",
+    "nutridex": "nutridex",
+    "additive analysis": "nutridex",
 }
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent
@@ -411,6 +421,7 @@ SKILL_REGISTRY_MAP: dict[str, str] = {
     "data-extractor": "data-extract",
     "rnaseq-de": "rnaseq",
     "diff-visualizer": "diffviz",
+    "nutridex": "nutridex",
 }
 
 

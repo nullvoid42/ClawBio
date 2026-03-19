@@ -29,10 +29,11 @@ When the user asks a question, match it to a skill and act:
 | UK Biobank, UKB fields, "what UKB variables measure X", biobank schema search, UKB field lookup, data showcase | `skills/ukb-navigator/` | Run `ukb_navigator.py` |
 | Galaxy, usegalaxy, tool shed, bioblend, "run on galaxy", galaxy tool, galaxy workflow, NGS pipeline | `skills/galaxy-bridge/` | Run `galaxy_bridge.py` |
 | Bulk RNA-seq, pseudo-bulk, differential expression, DESeq2, PyDESeq2, contrast, volcano plot | `skills/rnaseq-de/` | Run `rnaseq_de.py` |
+| Snack photo, crisp packet, food ingredients, E-numbers, "what am I eating", food label, ultra-processed, "years off my life", additive analysis | `skills/nutridex/` | Run `nutridex.py` |
 
 ## How to Use a Skill
 
-### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, scrna-orchestrator, bio-orchestrator, clinpgx, gwas-prs, gwas-lookup, profile-report, ukb-navigator, galaxy-bridge)
+### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, scrna-orchestrator, bio-orchestrator, clinpgx, gwas-prs, gwas-lookup, profile-report, ukb-navigator, galaxy-bridge, nutridex)
 1. Read the skill's `SKILL.md` for domain context
 2. Run the Python script with correct CLI arguments (see below)
 3. Show the user the output — open any generated figures and explain results
@@ -124,6 +125,14 @@ python skills/bio-orchestrator/orchestrator.py \
 python skills/rnaseq-de/rnaseq_de.py \
   --counts <counts_csv_or_tsv> --metadata <metadata_csv_or_tsv> \
   --formula "~ batch + condition" --contrast "condition,treated,control" --output <report_dir>
+
+# NutriDex — additive analysis & life impact scoring
+python skills/nutridex/nutridex.py \
+  --ingredients "salt, sugar, E150d, maltodextrin" --output <report_dir>
+python skills/nutridex/nutridex.py \
+  --demo --output /tmp/nutridex_demo
+python skills/nutridex/nutridex.py \
+  --demo --product monster_energy --output /tmp/nutridex_monster
 ```
 
 ## Demo Data
@@ -148,6 +157,8 @@ For instant demos when the user has no data:
 | Profile report demo (full 4-skill profile) | `--demo` flag | profile-report |
 | UKB Navigator demo (blood pressure, pre-cached) | `--demo` flag | ukb-navigator |
 | Galaxy Bridge demo (FastQC, offline) | `--demo` flag | galaxy-bridge |
+| NutriDex demo (Walkers, Monster, Pot Noodle) | `--demo` flag | nutridex |
+| NutriDex demo ingredients JSON | `skills/nutridex/data/demo_ingredients.json` | nutridex |
 
 ### Demo Commands
 
@@ -198,6 +209,15 @@ python skills/bio-orchestrator/orchestrator.py --list-skills
 
 # RNA-seq DE demo
 python skills/rnaseq-de/rnaseq_de.py --demo --output /tmp/rnaseq_de_demo
+
+# NutriDex demo
+python skills/nutridex/nutridex.py --demo --output /tmp/nutridex_demo
+
+# NutriDex demo (Monster Energy)
+python skills/nutridex/nutridex.py --demo --product monster_energy --output /tmp/nutridex_monster
+
+# NutriDex demo (Pot Noodle)
+python skills/nutridex/nutridex.py --demo --product pot_noodle --output /tmp/nutridex_pot_noodle
 ```
 
 ## Contributing — New Skill Workflow
