@@ -30,10 +30,11 @@ When the user asks a question, match it to a skill and act:
 | UK Biobank, UKB fields, "what UKB variables measure X", biobank schema search, UKB field lookup, data showcase | `skills/ukb-navigator/` | Run `ukb_navigator.py` |
 | Galaxy, usegalaxy, tool shed, bioblend, "run on galaxy", galaxy tool, galaxy workflow, NGS pipeline | `skills/galaxy-bridge/` | Run `galaxy_bridge.py` |
 | Bulk RNA-seq, pseudo-bulk, differential expression, DESeq2, PyDESeq2, contrast, volcano plot | `skills/rnaseq-de/` | Run `rnaseq_de.py` |
+| protocols.io, protocol search, lab protocol, scientific methods, protocol DOI, protocol steps | `skills/protocols-io/` | Run `protocols_io.py` |
 
 ## How to Use a Skill
 
-### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, scrna-orchestrator, bio-orchestrator, clinpgx, gwas-prs, gwas-lookup, profile-report, ukb-navigator, galaxy-bridge, rnaseq-de, methylation-clock)
+### Skills with Python scripts (pharmgx-reporter, equity-scorer, nutrigx_advisor, scrna-orchestrator, bio-orchestrator, clinpgx, gwas-prs, gwas-lookup, profile-report, ukb-navigator, galaxy-bridge, rnaseq-de, methylation-clock, protocols-io)
 1. Read the skill's `SKILL.md` for domain context
 2. Run the Python script with correct CLI arguments (see below)
 3. Show the user the output — open any generated figures and explain results
@@ -125,6 +126,13 @@ python skills/bio-orchestrator/orchestrator.py \
 python skills/rnaseq-de/rnaseq_de.py \
   --counts <counts_csv_or_tsv> --metadata <metadata_csv_or_tsv> \
   --formula "~ batch + condition" --contrast "condition,treated,control" --output <report_dir>
+
+# Protocols.io bridge — search, retrieve, authenticate
+python skills/protocols-io/protocols_io.py --login
+python skills/protocols-io/protocols_io.py --search "CRISPR gene editing"
+python skills/protocols-io/protocols_io.py --protocol <id_or_uri_or_doi>
+python skills/protocols-io/protocols_io.py --steps <id_or_uri>
+python skills/protocols-io/protocols_io.py --demo
 ```
 
 ## Demo Data
@@ -150,6 +158,7 @@ For instant demos when the user has no data:
 | Profile report demo (full 4-skill profile) | `--demo` flag | profile-report |
 | UKB Navigator demo (blood pressure, pre-cached) | `--demo` flag | ukb-navigator |
 | Galaxy Bridge demo (FastQC, offline) | `--demo` flag | galaxy-bridge |
+| Protocols.io demo (RNA extraction, pre-cached) | `--demo` flag | protocols-io |
 
 ### Demo Commands
 
@@ -204,6 +213,12 @@ python skills/bio-orchestrator/orchestrator.py --list-skills
 
 # RNA-seq DE demo
 python skills/rnaseq-de/rnaseq_de.py --demo --output /tmp/rnaseq_de_demo
+
+# Protocols.io demo
+python skills/protocols-io/protocols_io.py --demo
+
+# Protocols.io search
+python skills/protocols-io/protocols_io.py --search "RNA extraction"
 ```
 
 ## Contributing — New Skill Workflow
