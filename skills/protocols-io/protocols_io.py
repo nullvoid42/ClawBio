@@ -341,7 +341,7 @@ def format_search_results(data: dict, query: str) -> str:
         if doi:
             lines.append(f"- **DOI**: {doi}")
         if url:
-            lines.append(f"- **URL**: [{url}]({url})")
+            lines.append(f"- **URL**: {url}")
         lines.append("")
 
     lines.append(f"\n---\n{DISCLAIMER}")
@@ -375,7 +375,7 @@ def format_protocol_detail(data: dict) -> str:
     if doi:
         lines.append(f"- **DOI**: {doi}")
     if url:
-        lines.append(f"- **URL**: [{url}]({url})")
+        lines.append(f"- **URL**: {url}")
 
     stats = p.get("stats", {})
     n_steps = stats.get("number_of_steps") or p.get("number_of_steps", "?")
