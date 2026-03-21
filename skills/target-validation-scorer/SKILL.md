@@ -42,7 +42,7 @@ metadata:
     always: false
     emoji: "🎯"
     homepage: https://github.com/ClawBio/ClawBio
-    os: [macos, linux]
+    os: [darwin, linux]
     install:
       - kind: pip
         package: matplotlib

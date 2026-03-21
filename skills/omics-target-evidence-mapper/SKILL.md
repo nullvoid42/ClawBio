@@ -8,12 +8,24 @@ tags:
   - translational-research
   - literature
   - trials
-trigger_keywords:
-  - target evidence
-  - gene disease evidence
-  - target triage
-  - omics evidence
-  - gene disease mapper
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python3
+      env: []
+      config: []
+    always: false
+    emoji: "🧬"
+    homepage: https://github.com/ClawBio/ClawBio
+    os: [darwin, linux]
+    install: []
+    trigger_keywords:
+      - target evidence
+      - gene disease evidence
+      - target triage
+      - omics evidence
+      - gene disease mapper
 ---
 
 # Why This Exists
@@ -57,4 +69,3 @@ This skill is for research triage only. It does not infer causality, rank therap
 
 ```bash
 python skills/omics-target-evidence-mapper/omics_target_evidence_mapper.py --demo --output demo_out
-
