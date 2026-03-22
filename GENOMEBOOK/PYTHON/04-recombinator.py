@@ -80,6 +80,25 @@ def mutate_allele(allele, locus_def, trait_category, config):
     return new_allele, record
 
 
+def _short_name(genome):
+    """Extract a short display name, stripping recursive 'Offspring of' prefixes."""
+    name = genome.get("name", genome["id"])
+    # For generation-0 founders, use their real name
+    if genome.get("generation", 0) == 0:
+        # Take first name + last name (e.g. "Albert Einstein" -> "Einstein")
+        parts = name.split()
+        return parts[-1] if parts else name
+    # For offspring, use their ID which is always short
+    return genome["id"]
+
+
+def _offspring_name(parent_a, parent_b, generation, index):
+    """Generate a concise offspring name."""
+    a_short = _short_name(parent_a)
+    b_short = _short_name(parent_b)
+    return f"G{generation}-{index:03d} ({a_short} x {b_short})"
+
+
 def recombine(parent_a, parent_b, generation, offspring_index, trait_reg, disease_reg):
     """Produce one offspring from two parents via recombination + mutation.
 
@@ -178,7 +197,7 @@ def recombine(parent_a, parent_b, generation, offspring_index, trait_reg, diseas
 
     offspring = {
         "id": offspring_id,
-        "name": f"Offspring of {parent_a.get('name', parent_a['id'])} & {parent_b.get('name', parent_b['id'])}",
+        "name": _offspring_name(parent_a, parent_b, generation, offspring_index),
         "sex": sex,
         "sex_chromosomes": sex_chr,
         "ancestry": ancestry,
