@@ -170,6 +170,24 @@ class MoltbookHandler(BaseHTTPRequestHandler):
             self._serve_observer_ui()
             return
 
+        # Observatory demo page
+        if path == "/observatory":
+            obs_html = Path(__file__).resolve().parent.parent.parent / "slides" / "genomebook" / "observatory.html"
+            if obs_html.exists():
+                self._html_response(obs_html.read_text())
+            else:
+                self._html_response("<h1>observatory.html not found</h1>", 404)
+            return
+
+        # Observatory JSON data
+        if path == "/observatory.json":
+            obs_json = DATA / "observatory.json"
+            if obs_json.exists():
+                self._json_response(json.loads(obs_json.read_text()))
+            else:
+                self._json_response({"error": "Run 11-observatory.py first"}, 404)
+            return
+
         # List submolts
         if path == "/api/submolts":
             rows = self.db.execute(

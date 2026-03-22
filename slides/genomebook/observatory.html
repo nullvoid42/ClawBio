@@ -144,8 +144,8 @@ canvas { width: 100% !important; height: 180px !important; }
 
 <script>
 // ── Config ──
-const MOLTBOOK_API = 'http://127.0.0.1:8800';
-const OBSERVATORY_PATH = '../../GENOMEBOOK/DATA/observatory.json';
+const MOLTBOOK_API = window.location.port === '8800' ? '' : 'http://127.0.0.1:8800';
+const OBSERVATORY_PATH = (MOLTBOOK_API || '') + '/observatory.json';
 const FEED_INTERVAL = 5000;
 const CHART_INTERVAL = 15000;
 
@@ -154,7 +154,7 @@ let obsData = null;
 // ── Feed ──
 async function loadFeed() {
   try {
-    const resp = await fetch(MOLTBOOK_API + '/api/feed?limit=30');
+    const resp = await fetch((MOLTBOOK_API || '') + '/api/feed?limit=30');
     const data = await resp.json();
     const container = document.getElementById('feed-container');
     const status = document.getElementById('feed-status');
@@ -171,7 +171,7 @@ async function loadFeed() {
     for (const p of data.posts) {
       let commentsHtml = '';
       try {
-        const pr = await fetch(MOLTBOOK_API + '/api/posts/' + p.id);
+        const pr = await fetch((MOLTBOOK_API || '') + '/api/posts/' + p.id);
         const pd = await pr.json();
         for (const c of (pd.comments || [])) {
           commentsHtml += '<div class="comment"><div class="comment-author">' +
@@ -201,14 +201,8 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s; re
 async function loadObservatory() {
   try {
     // Try relative path first, then absolute
-    let resp;
-    try {
-      resp = await fetch(OBSERVATORY_PATH);
-      if (!resp.ok) throw new Error();
-    } catch(e) {
-      resp = await fetch('/observatory.json');
-      if (!resp.ok) throw new Error();
-    }
+    const resp = await fetch(OBSERVATORY_PATH);
+    if (!resp.ok) throw new Error('No observatory data');
     obsData = await resp.json();
     document.getElementById('chart-status').textContent = obsData.total_generations + ' generations';
 
