@@ -138,7 +138,7 @@ Expected output: a search results report for "RNA extraction" with 5 pre-cached 
 
 ## Output Structure
 
-Output is printed to the terminal as markdown.
+Without `--output`: results are printed to the terminal as markdown. With `--output <dir>`: all modes save `report.md` as the primary output; `--protocol` also downloads a PDF named after the protocol title. All modes write a `reproducibility/` bundle (`commands.sh`, `checksums.sha256`, `environment.yml`).
 
 ## Dependencies
 
