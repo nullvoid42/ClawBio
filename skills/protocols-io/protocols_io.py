@@ -284,12 +284,15 @@ def _parse_protocol_id(raw: str) -> str:
     - URI slug:  some-protocol-slug-abc123  → some-protocol-slug-abc123
     - Numeric:   30756  → 30756
     - DOI:       10.17504/protocols.io.abc123  → 10.17504/protocols.io.abc123
+    - dx.doi.org: dx.doi.org/10.17504/protocols.io.abc123  → 10.17504/protocols.io.abc123
     """
     s = raw.strip().rstrip("/")
     if "protocols.io/view/" in s:
         s = s.split("protocols.io/view/")[-1]
     elif "protocols.io/api/" in s:
         pass
+    elif s.startswith("dx.doi.org/"):
+        s = s[len("dx.doi.org/"):]
     s = s.split("?")[0].split("#")[0]
     return s
 
