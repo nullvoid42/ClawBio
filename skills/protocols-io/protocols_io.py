@@ -106,7 +106,7 @@ class _RateLimiter:
             if len(self._timestamps) >= self._max:
                 sleep_for = self._timestamps[0] - (now - self._window)
                 if sleep_for > 0:
-                    print(f"  Rate limit (client) — waiting {sleep_for:.1f}s", file=sys.stderr)
+                    print(f"  Rate limit (client) -- waiting {sleep_for:.1f}s", file=sys.stderr)
                     time.sleep(sleep_for)
             self._timestamps.append(time.monotonic())
 
@@ -220,7 +220,7 @@ def _api_get(url: str, params: dict | None = None, token: str | None = None) -> 
                 retry_after = 10
             retry_after = max(1, min(retry_after, 120))
             print(
-                f"  HTTP 429 Too Many Requests — retry in {retry_after}s "
+                f"  HTTP 429 Too Many Requests -- retry in {retry_after}s "
                 f"({attempt}/{MAX_RETRIES_429})",
                 file=sys.stderr,
             )
@@ -460,7 +460,7 @@ def format_steps(data: dict, protocol_id: str) -> str:
     else:
         steps = data.get("steps", [])
     lines = [
-        f"# Protocol Steps — {protocol_id}\n",
+        f"# Protocol Steps -- {protocol_id}\n",
         f"**{len(steps)} steps**\n",
     ]
     for j, s in enumerate(steps, 1):
@@ -505,7 +505,7 @@ def _load_demo_json(filename: str) -> dict:
 
 def run_demo() -> None:
     """Run offline demo with pre-cached data."""
-    print("\nProtocols.io Bridge — Demo Mode (offline)")
+    print("\nProtocols.io Bridge -- Demo Mode (offline)")
     print("=" * 50)
 
     demo_search = _load_demo_json("demo_search_results.json")
@@ -610,7 +610,7 @@ def _prompt_for_token() -> str | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="protocols.io bridge — search, browse, and retrieve scientific protocols"
+        description="protocols.io bridge -- search, browse, and retrieve scientific protocols"
     )
     parser.add_argument("--login", action="store_true", help="Authenticate with access token")
     parser.add_argument("--search", type=str, help="Search protocols by keyword")
@@ -700,7 +700,7 @@ def main() -> None:
             if total > 0:
                 print(
                     f"No protocols returned for page {args.page} "
-                    f"({total} total results exist — try a different --page)."
+                    f"({total} total results exist -- try a different --page)."
                 )
             else:
                 print("No protocols found matching your query and filters.")
