@@ -574,7 +574,7 @@ def download_protocol_pdf(uri: str, output_path: Path | None = None) -> Path | N
         hdrs["Authorization"] = f"Bearer {token}"
 
     try:
-        resp = requests.get(url, headers=hdrs, timeout=60, stream=True)
+        resp = requests.get(url, headers=hdrs, timeout=60)
     except requests.RequestException as e:
         print(f"ERROR: PDF download failed: {e}", file=sys.stderr)
         return None
