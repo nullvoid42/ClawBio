@@ -266,7 +266,7 @@ python skills/genome-match/genome_match.py --demo
 python skills/recombinator/recombinator.py --demo
 
 # Labstep demo
-python skills/labstep/labstep.py --demo
+python skills/labstep/labstep.py --demo --output /tmp/labstep
 
 ```
 

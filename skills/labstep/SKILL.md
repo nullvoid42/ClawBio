@@ -168,24 +168,25 @@ loc.getInnerLocations()
 ```bash
 # Offline demo — no API key required
 python skills/labstep/labstep.py --demo
+python skills/labstep/labstep.py --demo --output /tmp/labstep
 
 # List recent experiments (live API)
 python skills/labstep/labstep.py --experiments
-python skills/labstep/labstep.py --experiments --search "CRISPR" --count 10
+python skills/labstep/labstep.py --experiments --search "CRISPR" --count 10 --output /tmp/labstep
 
 # Full detail for one experiment (data fields, comments, linked protocols)
-python skills/labstep/labstep.py --experiment-id 10241
+python skills/labstep/labstep.py --experiment-id 10241 --output /tmp/labstep
 
 # List protocols
 python skills/labstep/labstep.py --protocols
-python skills/labstep/labstep.py --protocols --search "RNA extraction"
+python skills/labstep/labstep.py --protocols --search "RNA extraction" --output /tmp/labstep
 
 # Full protocol detail with all steps
-python skills/labstep/labstep.py --protocol-id 3301
+python skills/labstep/labstep.py --protocol-id 3301 --output /tmp/labstep
 
 # Inventory / reagent list
 python skills/labstep/labstep.py --inventory
-python skills/labstep/labstep.py --inventory --search "TRIzol"
+python skills/labstep/labstep.py --inventory --search "TRIzol" --output /tmp/labstep
 ```
 
 ## Demo

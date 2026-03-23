@@ -6,12 +6,12 @@ Query experiments, protocols, resources, and inventory via the Labstep API
 (labstepPy).  Run with --demo for an offline showcase using synthetic data.
 
 Usage:
-    python skills/labstep/labstep.py --demo
-    python skills/labstep/labstep.py --experiments [--search QUERY] [--count N]
-    python skills/labstep/labstep.py --experiment-id ID
-    python skills/labstep/labstep.py --protocols [--search QUERY] [--count N]
-    python skills/labstep/labstep.py --protocol-id ID
-    python skills/labstep/labstep.py --inventory [--search QUERY]
+    python skills/labstep/labstep.py --demo --output /tmp/labstep
+    python skills/labstep/labstep.py --experiments [--search QUERY] [--count N] [--output DIR]
+    python skills/labstep/labstep.py --experiment-id ID [--output DIR]
+    python skills/labstep/labstep.py --protocols [--search QUERY] [--count N] [--output DIR]
+    python skills/labstep/labstep.py --protocol-id ID [--output DIR]
+    python skills/labstep/labstep.py --inventory [--search QUERY] [--output DIR]
 """
 
 from __future__ import annotations
@@ -203,6 +203,38 @@ def format_inventory(data: dict, search: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Output helpers
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = SKILL_DIR.parent.parent
+
+
+def _write_output(output_dir: Path, content: str, label: str = "report") -> None:
+    """Write markdown content to output_dir/report.md and a result.json envelope."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "report.md"
+    report_path.write_text(content, encoding="utf-8")
+    print(f"Report written to {report_path}")
+
+    # Standardised result.json — use common helper when available
+    try:
+        if str(_PROJECT_ROOT) not in sys.path:
+            sys.path.insert(0, str(_PROJECT_ROOT))
+        from clawbio.common.report import write_result_json  # type: ignore
+        write_result_json(
+            output_dir=output_dir,
+            skill="labstep",
+            version="0.2.0",
+            summary={"label": label, "output": str(report_path)},
+            data={},
+        )
+    except ImportError:
+        pass  # common helper not available — report.md is sufficient
+
+    print(f"Full output in {output_dir}/")
+
+
+# ---------------------------------------------------------------------------
 # Demo mode
 # ---------------------------------------------------------------------------
 
@@ -215,7 +247,7 @@ def _load_demo(filename: str) -> dict | list:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def run_demo() -> None:
+def run_demo(output_dir: Path | None = None) -> None:
     print("\nLabstep ELN Bridge — Demo Mode (offline synthetic data)")
     print("=" * 58)
 
@@ -223,17 +255,36 @@ def run_demo() -> None:
     protocols: list[dict] = _load_demo("demo_protocols.json")  # type: ignore
     inventory: dict = _load_demo("demo_inventory.json")  # type: ignore
 
+    exp_md = format_experiments(experiments, title="Recent Experiments (demo)")
+    proto_md = format_protocols([protocols[0]], title="Protocol Detail (demo)")
+    inv_md = format_inventory(inventory)
+    inv_search_md = format_inventory(inventory, search="RNA")
+
     print("\n\n--- EXPERIMENTS ---\n")
-    print(format_experiments(experiments, title="Recent Experiments (demo)"))
+    print(exp_md)
 
     print("\n\n--- PROTOCOL DETAIL: Lentiviral sgRNA Library Transduction ---\n")
-    print(format_protocols([protocols[0]], title="Protocol Detail (demo)"))
+    print(proto_md)
 
     print("\n\n--- INVENTORY SNAPSHOT ---\n")
-    print(format_inventory(inventory))
+    print(inv_md)
 
     print("\n\n--- INVENTORY SEARCH: \"RNA\" ---\n")
-    print(format_inventory(inventory, search="RNA"))
+    print(inv_search_md)
+
+    if output_dir is not None:
+        sections = [
+            "# 🔬 Labstep ELN — Demo Report\n",
+            "## Experiments\n",
+            exp_md,
+            "\n## Protocol Detail\n",
+            proto_md,
+            "\n## Inventory Snapshot\n",
+            inv_md,
+            "\n## Inventory Search: \"RNA\"\n",
+            inv_search_md,
+        ]
+        _write_output(output_dir, "\n".join(sections), label="demo")
 
 
 # ---------------------------------------------------------------------------
@@ -438,11 +489,13 @@ def main() -> None:
 
     parser.add_argument("--search", metavar="QUERY", help="Filter by keyword")
     parser.add_argument("--count", type=int, default=20, help="Max items to return (default: 20)")
+    parser.add_argument("--output", metavar="DIR", help="Write report.md and result.json to this directory")
 
     args = parser.parse_args()
+    out = Path(args.output) if args.output else None
 
     if args.demo:
-        run_demo()
+        run_demo(output_dir=out)
         return
 
     user = get_labstep_user()
@@ -450,24 +503,39 @@ def main() -> None:
     if args.experiments:
         data = live_experiments(user, args.search, args.count)
         title = f"Experiments — \"{args.search}\"" if args.search else "Recent Experiments"
-        print(format_experiments(data, title=title))
+        md = format_experiments(data, title=title)
+        print(md)
+        if out:
+            _write_output(out, md, label="experiments")
 
     elif args.experiment_id:
         data = live_experiment_detail(user, args.experiment_id)
-        print(format_experiments(data, title=f"Experiment #{args.experiment_id}"))
+        md = format_experiments(data, title=f"Experiment #{args.experiment_id}")
+        print(md)
+        if out:
+            _write_output(out, md, label=f"experiment-{args.experiment_id}")
 
     elif args.protocols:
         data = live_protocols(user, args.search, args.count)
         title = f"Protocols — \"{args.search}\"" if args.search else "Recent Protocols"
-        print(format_protocols(data, title=title))
+        md = format_protocols(data, title=title)
+        print(md)
+        if out:
+            _write_output(out, md, label="protocols")
 
     elif args.protocol_id:
         data = live_protocol_detail(user, args.protocol_id)
-        print(format_protocols(data, title=f"Protocol #{args.protocol_id}"))
+        md = format_protocols(data, title=f"Protocol #{args.protocol_id}")
+        print(md)
+        if out:
+            _write_output(out, md, label=f"protocol-{args.protocol_id}")
 
     elif args.inventory:
         data = live_inventory(user, args.search, args.count)
-        print(format_inventory(data, search=args.search))
+        md = format_inventory(data, search=args.search)
+        print(md)
+        if out:
+            _write_output(out, md, label="inventory")
 
 
 if __name__ == "__main__":

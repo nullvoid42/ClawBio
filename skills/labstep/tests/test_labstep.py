@@ -24,6 +24,7 @@ from labstep import (
     DISCLAIMER,
     _fmt_date,
     _load_demo,
+    _write_output,
     format_experiments,
     format_inventory,
     format_protocols,
@@ -314,6 +315,47 @@ def test_run_demo_disclaimer_present(capsys):
     run_demo()
     out = capsys.readouterr().out
     assert "research and educational tool" in out
+
+
+# ---------------------------------------------------------------------------
+# _write_output — report.md written to output directory
+# ---------------------------------------------------------------------------
+
+
+def test_write_output_creates_report_md(tmp_path):
+    """_write_output writes report.md to the given directory."""
+    _write_output(tmp_path, "# Test Report\n\nContent here.", label="test")
+    report = tmp_path / "report.md"
+    assert report.exists()
+    assert "# Test Report" in report.read_text()
+
+
+def test_write_output_creates_directory(tmp_path):
+    """_write_output creates the output directory if it doesn't exist."""
+    out = tmp_path / "new_subdir"
+    assert not out.exists()
+    _write_output(out, "hello", label="test")
+    assert out.exists()
+    assert (out / "report.md").exists()
+
+
+def test_run_demo_writes_report_md(tmp_path):
+    """run_demo with output_dir writes a combined report.md."""
+    run_demo(output_dir=tmp_path)
+    report = tmp_path / "report.md"
+    assert report.exists()
+    content = report.read_text()
+    assert "Experiments" in content
+    assert "Protocol Detail" in content
+    assert "Inventory" in content
+    assert "CRISPR Screen" in content
+    assert "TRIzol Reagent" in content
+
+
+def test_run_demo_report_contains_disclaimer(tmp_path):
+    run_demo(output_dir=tmp_path)
+    content = (tmp_path / "report.md").read_text()
+    assert "research and educational tool" in content
 
 
 # ---------------------------------------------------------------------------
