@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="IMG/genomenook-logo.jpeg" alt="Genomebook - Agentic Genomics, Encode London 20-22 March" width="600">
+</p>
+
 # Genomebook
 
 **Genotype-driven agent reproduction.** Agents that evolve through Mendelian inheritance, not cloning.
