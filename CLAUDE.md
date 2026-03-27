@@ -16,6 +16,7 @@ When the user asks a question, match it to a skill and act:
 | Genome comparison, IBS, "how much DNA in common", George Church, Corpasome, pairwise | `skills/genome-compare/` | Run `genome_compare.py` |
 | Route a query, multi-step analysis, "what skill should I use" | `skills/bio-orchestrator/` | Run `orchestrator.py` |
 | Variant annotation, VEP, ClinVar, gnomAD | `skills/vcf-annotator/` | Read SKILL.md, apply methodology |
+| On-device DL variant scoring, HyenaDNA, functional disruption, sequence-to-function | `skills/variant-scorer/` | Run `variant_scorer.py` |
 | Literature search, PubMed, bioRxiv, citation graph | `skills/lit-synthesizer/` | Read SKILL.md, apply methodology |
 | PubMed search, "summarise PubMed papers about X", "recent papers on gene/disease", research briefing, gene papers, disease papers | `skills/pubmed-summariser/` | Run `pubmed_summariser.py` |
 | Single-cell RNA-seq, Scanpy, clustering, marker genes, doublet removal, h5ad | `skills/scrna-orchestrator/` | Run `scrna_orchestrator.py` |

@@ -512,6 +512,13 @@ SKILLS = {
         "no_input_required": True,
         "accepts_genotypes": False,
     },
+    "dlscore": {
+        "script": SKILLS_DIR / "variant-scorer" / "variant_scorer.py",
+        "demo_args": ["--demo"],
+        "description": "On-device DL variant scoring (HyenaDNA, 43MB model)",
+        "allowed_extra_flags": {"--threshold", "--max-variants", "--assembly", "--offline"},
+        "accepts_genotypes": True,
+    },
 }
 
 # Skills that run in the full-profile pipeline (order matters)

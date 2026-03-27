@@ -1,0 +1,33 @@
+{
+  "model": "HyenaDNA-small-32k",
+  "model_id": "LongSafari/hyenadna-small-32k-seqlen-hf",
+  "context_bp": 1001,
+  "variants": [
+    {
+      "rsid": "rs4244285",
+      "gene": "CYP2C19",
+      "chrom": "10",
+      "pos": 96541616,
+      "ref": "G",
+      "alt": "A",
+      "genotype": "AG",
+      "log_likelihood_ref": -287.43,
+      "log_likelihood_alt": -289.12,
+      "disruption_score": 1.69,
+      "tier": "moderate"
+    },
+    {
+      "rsid": "rs9923231",
+      "gene": "VKORC1",
+      "chrom": "16",
+      "pos": 31107689,
+      "ref": "C",
+      "alt": "T",
+      "genotype": "TT",
+      "log_likelihood_ref": -284.47,
+      "log_likelihood_alt": -287.63,
+      "disruption_score": 3.16,
+      "tier": "high"
+    }
+  ]
+}
