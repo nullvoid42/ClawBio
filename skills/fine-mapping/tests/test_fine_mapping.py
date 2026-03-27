@@ -382,6 +382,51 @@ class TestIO:
         np.testing.assert_allclose(R_loaded, R_loaded.T, atol=1e-10)
         np.testing.assert_allclose(np.diag(R_loaded), 1.0, atol=1e-10)
 
+    def test_load_ld_tsv_with_string_header(self, tmp_path):
+        """load_ld skips a string header row (e.g. rsIDs) in a TSV LD matrix."""
+        R = np.eye(3)
+        path = tmp_path / "ld.tsv"
+        # Write with rsID header row
+        lines = ["rs1\trs2\trs3\n"] + ["\t".join(f"{v:.1f}" for v in row) + "\n" for row in R]
+        path.write_text("".join(lines))
+        R_loaded = load_ld(path, 3)
+        np.testing.assert_allclose(R_loaded, R, atol=1e-6)
+
+    def test_load_ld_tsv_without_header(self, tmp_path):
+        """load_ld loads a numeric-only TSV LD matrix correctly."""
+        R = np.array([[1.0, 0.8], [0.8, 1.0]])
+        path = tmp_path / "ld.tsv"
+        lines = ["\t".join(f"{v:.1f}" for v in row) + "\n" for row in R]
+        path.write_text("".join(lines))
+        R_loaded = load_ld(path, 2)
+        np.testing.assert_allclose(R_loaded, R, atol=1e-6)
+
+    def test_load_sumstats_alias_pval(self, tmp_path):
+        """'pval' column is aliased to 'p'."""
+        f = tmp_path / "stats.tsv"
+        f.write_text("rsid\tchr\tpos\tz\tpval\n"
+                     "rs1\t1\t1000\t3.5\t0.001\n"
+                     "rs2\t1\t2000\t1.2\t0.23\n")
+        df = load_sumstats(f)
+        assert "p" in df.columns
+        assert pytest.approx(df.loc[0, "p"]) == 0.001
+
+    def test_load_sumstats_alias_p_value(self, tmp_path):
+        """'p_value' column is aliased to 'p'."""
+        f = tmp_path / "stats.tsv"
+        f.write_text("rsid\tz\tp_value\n"
+                     "rs1\t3.5\t0.001\n")
+        df = load_sumstats(f)
+        assert "p" in df.columns
+
+    def test_load_sumstats_alias_pvalue(self, tmp_path):
+        """'pvalue' column is aliased to 'p'."""
+        f = tmp_path / "stats.tsv"
+        f.write_text("rsid\tz\tpvalue\n"
+                     "rs1\t3.5\t0.001\n")
+        df = load_sumstats(f)
+        assert "p" in df.columns
+
 
 # ---------------------------------------------------------------------------
 # TestRunFinemapping
