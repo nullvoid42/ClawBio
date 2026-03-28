@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this dataset, please cite it using the metadata below."
+title: "Personal Whole Genome Sequencing Variant Calls (SNPs, Indels, SVs, CNVs) of Manuel Corpas from Dante Labs 30x WGS"
+type: dataset
+authors:
+  - family-names: Corpas
+    given-names: Manuel
+    orcid: "https://orcid.org/0000-0002-6831-3647"
+date-released: "2026-03-28"
+license: CC0-1.0
+doi: "10.5281/zenodo.19297389"
+url: "https://zenodo.org/records/19297389"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.19285820"
+    description: "All-versions DOI for this dataset"
+keywords:
+  - whole genome sequencing
+  - WGS
+  - variant calls
+  - SNPs
+  - indels
+  - structural variants
+  - copy number variants
+  - pharmacogenomics
+  - personal genomics
+  - GRCh37
+repository: "https://github.com/ClawBio/ClawBio"

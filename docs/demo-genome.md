@@ -48,3 +48,25 @@ python clawbio.py run pharmgx --demo
 ```
 
 This runs the PharmGx reporter against the 21 PGx SNPs extracted from the Corpasome. The output includes a warfarin AVOID alert, gene profile table, and drug summary for 51 medications across 12 pharmacogenes.
+
+## 30x Whole-Genome Sequencing
+
+In addition to the 23andMe SNP chip, ClawBio now ships subsets from Manuel Corpas's **30x Illumina whole-genome sequence** (GRCh37, Dante Labs). The WGS data covers ~4 million SNPs, ~600K indels, structural variants (DEL, DUP, INV, BND, INS), and copy number variants, all licensed CC0.
+
+This dataset is provided for research and educational purposes only; it must not be used for clinical decision-making.
+
+| Subset | Contents | Location |
+|--------|----------|----------|
+| chr20 SNPs + indels | Chromosome 20 variants | `corpas-30x/subsets/chr20_snps_indels.vcf.gz` |
+| PGx loci | 31 pharmacogenomic SNPs (WGS) | `corpas-30x/subsets/pgx_loci.vcf.gz` |
+| NutriGx loci | 30 nutrigenomics SNPs (WGS) | `corpas-30x/subsets/nutrigx_loci.vcf.gz` |
+| SV calls | Structural variants | `corpas-30x/subsets/sv_calls.vcf.gz` |
+| CNV calls | Copy number variants | `corpas-30x/subsets/cnv_calls.vcf.gz` |
+
+Full VCFs are available from Zenodo ([doi:10.5281/zenodo.19297389](https://doi.org/10.5281/zenodo.19297389)). To download and prepare:
+
+```bash
+python scripts/prepare_corpas_30x.py --all
+```
+
+See [reference-genome.md](reference-genome.md) for full documentation, use cases, and citation details.

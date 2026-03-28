@@ -124,6 +124,24 @@ jobs:
       - name: Run RNA-seq DE tests
         run: python -m pytest skills/rnaseq-de/tests/test_rnaseq_de.py -v
 
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pyyaml
+
+      - name: Run reference genome benchmarks
+        run: python -m pytest tests/benchmark/test_reference_genome.py -v
+
   scrna-test:
     needs: changes
     if: needs.changes.outputs.scrna == 'true'

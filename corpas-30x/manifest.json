@@ -1,0 +1,110 @@
+{
+  "version": "1.0.0",
+  "genome_id": "corpas-30x",
+  "genome_build": "GRCh37",
+  "sequencing": "Illumina 30x WGS",
+  "source": "Dante Labs",
+  "zenodo_record_id": "19297389",
+  "source_doi": "10.5281/zenodo.19297389",
+  "all_versions_doi": "10.5281/zenodo.19285820",
+  "license": "CC0-1.0",
+  "zenodo_api_url": "https://zenodo.org/api/records/19297389",
+  "files": {
+    "full": {
+      "snps.vcf.gz": {
+        "zenodo_filename": "15001711233855A.all_chroms.snp.vcf.gz",
+        "zenodo_download_url": "https://zenodo.org/records/19297389/files/15001711233855A.all_chroms.snp.vcf.gz?download=1",
+        "md5": "72b728aefe54f9492b108c23ca7539bf",
+        "size_bytes": 174345958,
+        "sha256": "5f8f4e6c8af0e029d242d1229234d8a9895720c4440086455147cd6aea96ff2d",
+        "status": "verified",
+        "description": "Genome-wide SNP calls (GRCh37)"
+      },
+      "indels.vcf.gz": {
+        "zenodo_filename": "15001711233855A.all_chroms.indel.vcf.gz",
+        "zenodo_download_url": "https://zenodo.org/records/19297389/files/15001711233855A.all_chroms.indel.vcf.gz?download=1",
+        "md5": "0e173b22b24eb98b2193029ae65a2a8f",
+        "size_bytes": 50063317,
+        "sha256": "486fc40760b47424796a5cddd2670cd8ece6d9d8d4fe6f255b77fc9d5e33b566",
+        "status": "verified",
+        "description": "Genome-wide indel calls (GRCh37)"
+      },
+      "sv.pass.vcf.gz": {
+        "zenodo_filename": "15001711233855A.all_chroms.sv.pass.vcf.gz",
+        "zenodo_download_url": "https://zenodo.org/records/19297389/files/15001711233855A.all_chroms.sv.pass.vcf.gz?download=1",
+        "md5": "c823daf4fab4be2815c39ea47f69f7a7",
+        "size_bytes": 865081,
+        "sha256": "3158d431bb57ee3bf5db340f203eb86c15a2189a9e641105dbd61ded6bad7260",
+        "status": "verified",
+        "description": "Structural variant calls, PASS filter (DEL, DUP, INV, BND, INS)"
+      },
+      "cnv.vcf.gz": {
+        "zenodo_filename": "15001711233855A.all_chroms.cnv.vcf.gz",
+        "zenodo_download_url": "https://zenodo.org/records/19297389/files/15001711233855A.all_chroms.cnv.vcf.gz?download=1",
+        "md5": "44828f4d0b471a255c873951a5cbdf73",
+        "size_bytes": 95078,
+        "sha256": "7f3f7974b18f1f9d41dfc1392bb0d05c7e5062dc3b075c4d13ac4ba2fc84c3b0",
+        "status": "verified",
+        "description": "Copy number variant calls"
+      },
+      "snps_summary.vcf": {
+        "zenodo_filename": "15001711233855A.snp.vcf",
+        "zenodo_download_url": "https://zenodo.org/records/19297389/files/15001711233855A.snp.vcf?download=1",
+        "md5": "55414adaacabfee3738c2ed88a36b0d4",
+        "size_bytes": 65498,
+        "sha256": "638421dbe506918a0358e5c920222a77bbb620804a2dbfbd17778613cc1158e7",
+        "status": "verified",
+        "description": "SNP summary/example file (uncompressed)"
+      },
+      "indels_summary.vcf": {
+        "zenodo_filename": "15001711233855A.indel.vcf",
+        "zenodo_download_url": "https://zenodo.org/records/19297389/files/15001711233855A.indel.vcf?download=1",
+        "md5": "cd1097aeade2d4247f787f3c05b15f43",
+        "size_bytes": 65498,
+        "sha256": "594c948c75ff6492ec7034f68d01c5f39c3adcbdb96ed05d8157648df10b7b90",
+        "status": "verified",
+        "description": "Indel summary/example file (uncompressed)"
+      }
+    },
+    "subsets": {
+      "chr20_snps_indels.vcf.gz": {
+        "sha256": "729f1a592e010e667264e516235e9f916a987bdb07ede67c3025b4fb889de89a",
+        "status": "verified",
+        "description": "Chromosome 20 SNPs and indels for tutorials",
+        "generated_by": "prepare_corpas_30x.py --subsets"
+      },
+      "pgx_loci.vcf.gz": {
+        "sha256": "32746f49ea071d76e7051ecf493372e1a52a15a019b658b7204ec7bf46a95843",
+        "status": "verified",
+        "description": "31 pharmacogenomic loci extracted by rsID",
+        "generated_by": "prepare_corpas_30x.py --subsets"
+      },
+      "nutrigx_loci.vcf.gz": {
+        "sha256": "a9acd2c7c5bc8f3699a52c2494c5bac680488f84f034994c409fcc9f1be572cb",
+        "status": "verified",
+        "description": "30 nutrigenomics loci extracted by rsID",
+        "generated_by": "prepare_corpas_30x.py --subsets"
+      },
+      "sv_calls.vcf.gz": {
+        "sha256": "3158d431bb57ee3bf5db340f203eb86c15a2189a9e641105dbd61ded6bad7260",
+        "status": "verified",
+        "description": "Structural variant calls (copy of full SV file)",
+        "generated_by": "prepare_corpas_30x.py --subsets"
+      },
+      "cnv_calls.vcf.gz": {
+        "sha256": "7f3f7974b18f1f9d41dfc1392bb0d05c7e5062dc3b075c4d13ac4ba2fc84c3b0",
+        "status": "verified",
+        "description": "Copy number variant calls (copy of full CNV file)",
+        "generated_by": "prepare_corpas_30x.py --subsets"
+      }
+    },
+    "baselines": {
+      "qc_summary.json": {
+        "sha256": "a999e8307a613fb7c6fcdd4bdfe3c160d5cdef6fb5dcd614d7901797ed779299",
+        "status": "verified",
+        "description": "Frozen QC metrics: Ti/Tv, Het/Hom, variant counts by type and chromosome",
+        "generated_by": "prepare_corpas_30x.py --baselines"
+      }
+    }
+  }
+}

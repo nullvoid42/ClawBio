@@ -210,6 +210,12 @@ For instant demos when the user has no data:
 | Recombinator demo (Einstein x Anning, 3 offspring) | `--demo` flag | recombinator |
 | Labstep demo (3 experiments, protocols, inventory) | `--demo` flag | labstep |
 | Fine-mapping demo (200-variant locus, 2 causal signals, SuSiE) | `--demo` flag | fine-mapping |
+| Corpas 30x chr20 SNPs + indels (WGS) | `corpas-30x/subsets/chr20_snps_indels.vcf.gz` | variant-annotation, equity-scorer |
+| Corpas 30x SV calls (WGS) | `corpas-30x/subsets/sv_calls.vcf.gz` | variant-annotation |
+| Corpas 30x CNV calls (WGS) | `corpas-30x/subsets/cnv_calls.vcf.gz` | variant-annotation |
+| Corpas 30x PGx loci (WGS) | `corpas-30x/subsets/pgx_loci.vcf.gz` | pharmgx-reporter |
+| Corpas 30x NutriGx loci (WGS) | `corpas-30x/subsets/nutrigx_loci.vcf.gz` | nutrigx_advisor |
+| Corpas 30x QC baselines | `corpas-30x/baselines/qc_summary.json` | Benchmark tests |
 
 
 ### Demo Commands

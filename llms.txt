@@ -12,6 +12,7 @@
 - [CONTRIBUTING.md](CONTRIBUTING.md): How to contribute a skill, naming conventions, code standards
 - [SECURITY-AUDIT.md](SECURITY-AUDIT.md): Security audit results and remediation log
 - [SOUL.md](SOUL.md): ClawBio persona and voice
+- [Reference Genome](docs/reference-genome.md): Corpas 30x WGS reference genome (CC0, GRCh37, SNPs + indels + SVs + CNVs)
 
 ## Skills (MVP)
 

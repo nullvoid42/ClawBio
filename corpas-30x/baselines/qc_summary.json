@@ -1,0 +1,34 @@
+{
+  "description": "Frozen QC metrics for Corpas 30x WGS regression tests",
+  "genome_build": "GRCh37",
+  "snp_stats": {
+    "samples": 1,
+    "total_records": 3716648,
+    "total_snps": 3716648,
+    "total_indels": 0,
+    "transitions": 2490932,
+    "transversions": 1227150,
+    "ts_tv_ratio": 2.03,
+    "heterozygous": 2297924,
+    "homozygous_alt": 1409888,
+    "het_hom_ratio": 1.6299
+  },
+  "indel_stats": {
+    "samples": 1,
+    "total_records": 912009,
+    "total_snps": 0,
+    "total_indels": 912009,
+    "transitions": 0,
+    "transversions": 0,
+    "ts_tv_ratio": 0.0
+  },
+  "sv_counts": {
+    "DUP": 778,
+    "INV": 673,
+    "DEL": 5854,
+    "INS": 207,
+    "BND": 1413
+  },
+  "sv_total": 8925,
+  "cnv_total": 1387
+}

@@ -53,6 +53,14 @@ Every result ships with a reproducibility bundle: `commands.sh`, `environment.ym
 
 ---
 
+## Reference Genome
+
+ClawBio's demo data is built on a real, fully open human genome: the **Corpasome**. The [23andMe SNP chip](docs/demo-genome.md) (~600K variants) has been available since launch. Now, the project also ships subsets from a **30x Illumina whole-genome sequence** (GRCh37), covering ~4M SNPs, ~600K indels, and structural variants (DEL, DUP, INV, BND, INS, CNVs). All data comes from a single individual (Manuel Corpas), licensed CC0, and published on Zenodo ([doi:10.5281/zenodo.19297389](https://doi.org/10.5281/zenodo.19297389)). This dataset is provided for research and educational purposes only.
+
+See [docs/reference-genome.md](docs/reference-genome.md) for use cases, subsets, and citation details.
+
+---
+
 ## The Problem
 
 You read a paper. You want to reproduce Figure 3. So you:

@@ -1,0 +1,4 @@
+# Full VCFs are too large for git (~225 MB total).
+# Run: python scripts/prepare_corpas_30x.py --download
+*
+!.gitignore
