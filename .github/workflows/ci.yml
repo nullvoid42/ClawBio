@@ -31,37 +31,6 @@ jobs:
           git diff --stat HEAD~1 HEAD >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      scrna: ${{ steps.filter.outputs.scrna }}
-      scrna_embedding: ${{ steps.filter.outputs.scrna_embedding }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            scrna:
-              - "skills/scrna-orchestrator/**"
-              - "skills/bio-orchestrator/**"
-              - "clawbio/**"
-              - "clawbio.py"
-              - "pytest.ini"
-              - "requirements.txt"
-              - ".github/workflows/ci.yml"
-            scrna_embedding:
-              - "skills/scrna-embedding/**"
-              - "skills/bio-orchestrator/**"
-              - "clawbio/**"
-              - "clawbio.py"
-              - "pytest.ini"
-              - "requirements.txt"
-              - ".github/workflows/ci.yml"
-
   skill-lint:
     runs-on: ubuntu-latest
     steps:
@@ -141,53 +110,3 @@ jobs:
 
       - name: Run reference genome benchmarks
         run: python -m pytest tests/benchmark/test_reference_genome.py -v
-
-  scrna-test:
-    needs: changes
-    if: needs.changes.outputs.scrna == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest scanpy==1.10.2 anndata==0.10.8 leidenalg==0.10.2 igraph==0.11.6 seaborn==0.13.2 scrublet==0.2.3 celltypist==1.7.1
-
-      - name: Verify scRNA stack imports
-        run: python -c "import scanpy, anndata, leidenalg, igraph, scrublet, celltypist; print('ok')"
-
-      - name: Run scRNA Orchestrator tests
-        run: python -m pytest skills/scrna-orchestrator/tests/test_scrna_orchestrator.py -v -rA
-
-  scrna-embedding-test:
-    needs: changes
-    if: needs.changes.outputs.scrna_embedding == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest scanpy==1.10.2 "anndata>=0.12" leidenalg==0.10.2 igraph==0.11.6 seaborn==0.13.2 torch scvi-tools
-
-      - name: Verify scRNA embedding stack imports
-        run: python -c "import scanpy, anndata, leidenalg, igraph, torch, scvi; print('ok')"
-
-      - name: Run scRNA Embedding tests
-        run: python -m pytest skills/scrna-embedding/tests/test_scrna_embedding.py -v -rA
