@@ -4,10 +4,6 @@
   </a>
 </p>
 
-<p align="center">
-  <img src="img/clawbio-social-preview.png" alt="ClawBio" width="600">
-</p>
-
 <h3 align="center">ClawBio</h3>
 
 <p align="center">
