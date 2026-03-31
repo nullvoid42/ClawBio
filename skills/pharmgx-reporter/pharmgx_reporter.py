@@ -722,16 +722,19 @@ def lookup_single_drug(drug_name, profiles):
 
     # Warfarin is multi-gene special case
     if info.get("special") == "warfarin":
-        classification = get_warfarin_rec(profiles)
+        classification, warfarin_note = get_warfarin_rec(profiles)
         cyp2c9 = profiles.get("CYP2C9", {})
         vkorc1 = profiles.get("VKORC1", {})
-        return {
+        result = {
             "drug": drug_name, "brand": info["brand"], "class": info["class"],
             "gene": "CYP2C9 + VKORC1",
             "diplotype": f"CYP2C9 {cyp2c9.get('diplotype', '?')} / VKORC1 {vkorc1.get('diplotype', '?')}",
             "phenotype": f"CYP2C9 {cyp2c9.get('phenotype', '?')} / VKORC1 {vkorc1.get('phenotype', '?')}",
             "classification": classification,
         }
+        if warfarin_note:
+            result["note"] = warfarin_note
+        return result
 
     gene = info["gene"]
     if gene not in profiles:
@@ -774,7 +777,7 @@ def format_dosage_card(result, visible_dose=None):
         "avoid": "Consider alternative medication.",
         "indeterminate": "Insufficient data for recommendation.",
     }
-    rec_text = _CLS_TEXT.get(cl, "")
+    rec_text = result.get("note") or _CLS_TEXT.get(cl, "")
     if visible_dose:
         if cl == "standard":
             rec_text = f"Your genotype supports {result['drug']} {visible_dose} as prescribed."
@@ -1015,11 +1018,11 @@ def get_warfarin_rec(profiles):
     vkorc1_normal = "normal" in vkorc1.lower()
 
     if cyp2c9_normal and vkorc1_normal:
-        return "standard"
+        return "standard", None
     elif "poor" in cyp2c9.lower() or "high" in vkorc1.lower():
-        return "avoid"
+        return "avoid", None
     else:
-        return "caution"
+        return "caution", None
 
 
 def lookup_drugs(profiles):
@@ -1027,12 +1030,15 @@ def lookup_drugs(profiles):
 
     for drug_name, drug in GUIDELINES.items():
         if drug.get("special") == "warfarin":
-            classification = get_warfarin_rec(profiles)
-            results.setdefault(classification, []).append({
+            classification, warfarin_note = get_warfarin_rec(profiles)
+            entry = {
                 "drug": drug_name, "brand": drug["brand"],
                 "class": drug["class"], "gene": "CYP2C9+VKORC1",
                 "classification": classification,
-            })
+            }
+            if warfarin_note:
+                entry["note"] = warfarin_note
+            results.setdefault(classification, []).append(entry)
             continue
 
         gene = drug["gene"]
@@ -1436,7 +1442,8 @@ def generate_report(input_path, fmt, total_snps, pgx_snps, profiles, drug_result
     for cat in ["avoid", "caution", "indeterminate", "standard"]:
         for d in sorted(drug_results.get(cat, []), key=lambda x: x["drug"]):
             status = ICON.get(d["classification"], d["classification"].upper())
-            lines.append(f"| {d['drug']} | {d['brand']} | {d['class']} | {d['gene']} | {status} |")
+            note_suffix = f" — {d['note']}" if d.get("note") else ""
+            lines.append(f"| {d['drug']} | {d['brand']} | {d['class']} | {d['gene']} | {status}{note_suffix} |")
     lines.append("")
 
     # Disclaimer
@@ -1597,6 +1604,8 @@ def generate_html_report(input_path, fmt, total_snps, pgx_snps, profiles, drug_r
         evidence_cell = _evidence_level_html(enrichment_entry)
         rec_cell = badge + _evidence_cell_html(enrichment_entry, classification=cls)
         notes_cell = _html.escape(d['class'])
+        if d.get("note"):
+            notes_cell += f'<br><small style="color:#c0392b">{_html.escape(d["note"])}</small>'
         links_cell = _drug_links_html(d["gene"], gene_rsid_map)
 
         return (
