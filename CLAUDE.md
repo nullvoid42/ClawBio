@@ -309,15 +309,28 @@ python skills/cell-detection/cell_detection.py --demo --output /tmp/cell_detecti
 
 ```
 
+## Development Rules (STRICT)
+
+**All skill development and modification MUST use red/green TDD:**
+1. Write tests first that define the expected behaviour
+2. Run the tests and watch them fail (red)
+3. Implement the code to make the tests pass (green)
+4. Run the tests again and confirm they pass
+5. Refactor if needed, re-run tests to confirm no regression
+
+This applies to: new skills, bug fixes, feature additions, refactors, and any code change touching skill logic. No PR or commit should ship code that was not validated by this cycle. Agents: when asked to build or modify a skill, always start by writing or updating the test suite before touching implementation code.
+
 ## Contributing — New Skill Workflow
 
 When a user wants to create a new skill:
 
 1. Copy the template: `cp templates/SKILL-TEMPLATE.md skills/<new-skill-name>/SKILL.md`
 2. Edit the SKILL.md: fill in YAML frontmatter + methodology sections
-3. Add Python implementation (optional for MVP — SKILL.md alone is usable)
-4. Add demo data and tests
-5. Read `CONTRIBUTING.md` for naming conventions, code standards, and wanted skills list
+3. **Write tests first (red/green TDD):** create `skills/<name>/tests/test_<name>.py` with tests for expected inputs, outputs, edge cases, and demo mode. Run them and confirm they fail.
+4. Add Python implementation to make the tests pass
+5. Add demo data and `--demo` flag support
+6. Run full test suite: `pytest skills/<name>/tests/`
+7. Read `CONTRIBUTING.md` for naming conventions, code standards, and wanted skills list
 
 ## Safety Rules
 
