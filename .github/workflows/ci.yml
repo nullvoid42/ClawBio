@@ -132,23 +132,31 @@ jobs:
 
       - name: Run scientific correctness audit (smoke)
         run: |
-          clawbio-bench --smoke --repo . --output /tmp/bench_results || true
+          mkdir -p results
+          clawbio-bench --smoke --repo . || true
+
+      - name: Render markdown summary
+        if: always()
+        run: |
+          if ls results/suite/*/verdicts/*.json 1>/dev/null 2>&1; then
+            SUITE_DIR=$(ls -d results/suite/*/ | head -1)
+            clawbio-bench --render-markdown "$SUITE_DIR" --markdown-output results/summary.md || true
+          fi
 
       - name: Upload bench verdicts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scientific-audit-verdicts
-          path: /tmp/bench_results/
+          path: results/
           retention-days: 30
 
       - name: Post summary
         if: always()
         run: |
-          if [ -f /tmp/bench_results/summary.md ]; then
-            echo "## Scientific Correctness Audit" >> $GITHUB_STEP_SUMMARY
-            cat /tmp/bench_results/summary.md >> $GITHUB_STEP_SUMMARY
+          echo "## Scientific Correctness Audit" >> $GITHUB_STEP_SUMMARY
+          if [ -f results/summary.md ]; then
+            cat results/summary.md >> $GITHUB_STEP_SUMMARY
           else
-            echo "## Scientific Correctness Audit" >> $GITHUB_STEP_SUMMARY
-            echo "No summary generated. Check artifacts for details." >> $GITHUB_STEP_SUMMARY
+            echo "Bench ran but no markdown summary was generated. Check artifacts." >> $GITHUB_STEP_SUMMARY
           fi
