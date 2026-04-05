@@ -322,15 +322,52 @@ This applies to: new skills, bug fixes, feature additions, refactors, and any co
 
 ## Contributing — New Skill Workflow
 
+**Every new skill MUST conform to `templates/SKILL-TEMPLATE.md`.** No exceptions. The `/pr-audit` command enforces this on every PR.
+
 When a user wants to create a new skill:
 
 1. Copy the template: `cp templates/SKILL-TEMPLATE.md skills/<new-skill-name>/SKILL.md`
-2. Edit the SKILL.md: fill in YAML frontmatter + methodology sections
-3. **Write tests first (red/green TDD):** create `skills/<name>/tests/test_<name>.py` with tests for expected inputs, outputs, edge cases, and demo mode. Run them and confirm they fail.
-4. Add Python implementation to make the tests pass
-5. Add demo data and `--demo` flag support
-6. Run full test suite: `pytest skills/<name>/tests/`
-7. Read `CONTRIBUTING.md` for naming conventions, code standards, and wanted skills list
+2. Create subdirectories: `mkdir -p skills/<name>/tests skills/<name>/examples`
+3. **Fill in every required section of SKILL.md** (do not delete template sections):
+   - YAML frontmatter: name (must match folder), version, author, description, inputs, outputs, `trigger_keywords` (minimum 3)
+   - `## Trigger`: "Fire when" list + "Do NOT fire when" list. Make triggers loud and explicit.
+   - `## Scope`: Confirm one skill, one task. If it does two jobs, split it.
+   - `## Workflow`: Numbered steps only, no prose paragraphs. Set freedom level per step (prescriptive for fragile ops, flexible for creative ops).
+   - `## Example Output`: Actual rendered sample in a code block or table. Show, do not describe.
+   - `## Gotchas`: Minimum 3 entries. Pattern: "The model will want to do X. Do not. Here is why."
+   - `## Safety`: Must reference ClawBio medical disclaimer.
+   - `## Agent Boundary`: Agent dispatches and explains; skill executes.
+   - `## Chaining Partners`: Which skills this connects with and how.
+   - `## Maintenance`: Review cadence, staleness signals, deprecation criteria.
+4. Add synthetic demo data (never real patient data) and `--demo` flag support
+5. **Write tests first (red/green TDD):** create `skills/<name>/tests/test_<name>.py` with tests for expected inputs, outputs, edge cases, and demo mode. Run them and confirm they fail.
+6. Add Python implementation to make the tests pass
+7. **Stress test** (run 10 times with varied inputs). Every correction becomes a Gotcha.
+8. Run full test suite: `pytest skills/<name>/tests/`
+9. **Self-audit**: Run the SKILL.md conformance checklist (17 checks). All must PASS before PR.
+10. Read `CONTRIBUTING.md` for naming conventions, code standards, and wanted skills list
+
+### SKILL.md Conformance Checklist (must all PASS)
+
+| Check | Requirement |
+|-------|------------|
+| YAML: `name` | Present, matches folder name |
+| YAML: `version` | Semver format |
+| YAML: `author` | Present |
+| YAML: `description` | One line, specific |
+| YAML: `inputs` | Present with format and required flag |
+| YAML: `outputs` | Present with format |
+| YAML: `trigger_keywords` | At least 3 keywords |
+| Section: `## Trigger` | Fire/do-not-fire lists present |
+| Section: `## Scope` | One-skill-one-task confirmed |
+| Section: `## Workflow` | Numbered steps, not prose |
+| Section: `## Example Output` | Rendered sample, not just description |
+| Section: `## Gotchas` | At least 3 entries |
+| Section: `## Safety` | Disclaimer referenced |
+| Section: `## Agent Boundary` | Present |
+| File: demo data | At least one demo file |
+| File: tests/ | Directory with at least one test |
+| Line count | SKILL.md under 500 lines |
 
 ## Safety Rules
 

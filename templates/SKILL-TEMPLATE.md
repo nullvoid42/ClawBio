@@ -31,19 +31,43 @@ metadata:
 
 You are **[Skill Name]**, a specialised ClawBio agent for [domain]. Your role is to [core function in one sentence].
 
+## Trigger
+
+> **This is the most important section.** It determines whether the agent discovers
+> and fires this skill. Be loud, explicit, and list every plausible phrasing.
+
+**Fire this skill when the user says any of:**
+- "exact phrase 1"
+- "exact phrase 2"
+- "keyword or synonym"
+- "another way a user might ask for this"
+
+**Do NOT fire when:**
+- [Describe similar-sounding requests that should route elsewhere]
+- [Edge case that belongs to a different skill]
+
+**Design notes:** The trigger must be louder than quieter. Models skip subdued
+descriptions. Use exact phrases, domain-specific terms, and multiple synonyms.
+If two skills sound similar, the trigger is where you disambiguate.
+
 ## Why This Exists
 
 What goes wrong without this skill? What gap does it fill?
 
 - **Without it**: Users must [painful manual process]
 - **With it**: [Automated outcome in seconds/minutes]
-- **Why ClawBio**: [What makes this better than ChatGPT guessing — grounded in real databases/algorithms]
+- **Why ClawBio**: [What makes this better than ChatGPT guessing; grounded in real databases/algorithms]
 
 ## Core Capabilities
 
 1. **Capability 1**: Description
 2. **Capability 2**: Description
 3. **Capability 3**: Description
+
+## Scope
+
+**One skill, one task.** This skill does [specific task] and nothing else.
+If your skill is trying to do two unrelated jobs, split it into two skills.
 
 ## Input Formats
 
@@ -57,9 +81,15 @@ What goes wrong without this skill? What gap does it fill?
 When the user asks for [task type]:
 
 1. **Validate**: Check input format and required fields
-2. **Process**: [Core computation — be specific about algorithm/database used]
-3. **Generate**: [Output generation — what gets written where]
+2. **Process**: [Core computation; be specific about algorithm/database used]
+3. **Generate**: [Output generation; what gets written where]
 4. **Report**: Write `report.md` with findings, figures, and reproducibility bundle
+
+**Freedom level guidance:**
+- For fragile operations (database lookups, variant annotation, clinical thresholds):
+  be prescriptive. Every step must be exact.
+- For interpretive operations (report narrative, literature synthesis, strategy):
+  give guidance but leave room for the model to reason and compose.
 
 ## CLI Reference
 
@@ -84,7 +114,7 @@ To verify the skill works:
 python clawbio.py run <alias> --demo
 ```
 
-Expected output: [Brief description of what the demo produces — e.g. "a 3-page report covering 12 genes and 51 drugs with a synthetic patient"]
+Expected output: [Brief description of what the demo produces, e.g. "a 3-page report covering 12 genes and 51 drugs with a synthetic patient"]
 
 ## Algorithm / Methodology
 
@@ -104,6 +134,29 @@ Describe the core methodology so an AI agent can apply it even without the Pytho
 - "Example query 2"
 - "Example query 3"
 
+## Example Output
+
+> Show, do not just describe. Include an actual rendered sample of what the skill
+> produces. If the output is a table, show the table. If it is a report, show the
+> first section. This is far more effective than a format description alone.
+
+```markdown
+# [Skill Name] Report
+
+**Input**: demo_data.ext (3 variants)
+**Date**: 2026-04-05
+
+| Column A | Column B | Result |
+|----------|----------|--------|
+| value1   | value2   | finding |
+| value3   | value4   | finding |
+
+## Summary
+[One paragraph interpreting the results]
+
+*ClawBio is a research tool. Not a medical device.*
+```
+
 ## Output Structure
 
 ```
@@ -122,10 +175,24 @@ output_directory/
 ## Dependencies
 
 **Required** (in `requirements.txt` or skill-level install):
-- `package` >= version — purpose
+- `package` >= version; purpose
 
 **Optional**:
-- `package` — purpose (graceful degradation without it)
+- `package`; purpose (graceful degradation without it)
+
+## Gotchas
+
+> This is the highest-signal section. Document every place where the model
+> typically goes wrong, makes bad assumptions, or produces subtly incorrect output.
+> Each gotcha should follow the pattern: "You will want to do X. Do not. Here is why."
+
+- **Gotcha 1**: The model tends to [bad assumption]. Instead, [correct behaviour]. Why: [reason from testing].
+- **Gotcha 2**: When [specific scenario], the model will [wrong action]. The correct approach is [right action].
+- **Gotcha 3**: [Common failure mode discovered during stress testing]
+
+**How to populate this section:** Run your skill 10 times with varied inputs. Every
+time you have to correct or iterate on the output, write it down here. After
+stress testing, this section should have at least 3 entries.
 
 ## Safety
 
@@ -134,16 +201,30 @@ output_directory/
 - **Audit trail**: Log all operations to reproducibility bundle
 - **No hallucinated science**: All parameters trace to cited databases
 
+## Agent Boundary
+
+The agent (LLM) dispatches and explains. The skill (Python) executes.
+The agent must NOT override thresholds or invent associations.
+
 ## Integration with Bio Orchestrator
 
-**Trigger conditions** — the orchestrator routes here when:
+**Trigger conditions**: the orchestrator routes here when:
 - [Keyword or file-type pattern 1]
 - [Keyword or file-type pattern 2]
 
-**Chaining partners** — this skill connects with:
-- `[other-skill]`: [How they connect — e.g. "PharmGx output feeds into profile-report"]
+**Chaining partners**: this skill connects with:
+- `[other-skill]`: [How they connect, e.g. "PharmGx output feeds into profile-report"]
+
+> If your skill produces clean structured output (JSON, CSV, markdown with headers),
+> it can chain. If it produces free-form prose, it cannot. Design for chaining.
+
+## Maintenance
+
+- **Review cadence**: Re-evaluate this skill monthly or when upstream databases update
+- **Staleness signals**: [What would make this skill outdated, e.g. "new ClinVar release", "API endpoint change"]
+- **Deprecation**: If the skill no longer serves users, archive it to `skills/_deprecated/` with a note explaining why
 
 ## Citations
 
-- [Database/Paper 1](URL) — what it provides
-- [Database/Paper 2](URL) — what it provides
+- [Database/Paper 1](URL); what it provides
+- [Database/Paper 2](URL); what it provides
