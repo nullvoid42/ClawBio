@@ -315,7 +315,7 @@ _BADGE_LABEL = {
     "standard": "Standard",
     "caution": "Caution",
     "avoid": "Avoid",
-    "indeterminate": "Insufficient",
+    "indeterminate": "Indeterminate",
 }
 
 

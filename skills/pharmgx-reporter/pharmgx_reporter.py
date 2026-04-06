@@ -1008,19 +1008,28 @@ def call_diplotype(gene, pgx_snps):
         return "NOT_TESTED"
 
     detected = []
+    sv_skipped = []  # structural variants we cannot interpret from DTC data
     for rsid, vdef in gdef["variants"].items():
         if rsid in pgx_snps:
             gt = pgx_snps[rsid]["genotype"]
             alt = vdef["alt"].upper()
             if alt in ("DEL", "INS", "TA7"):
                 print(f"  WARNING: {gene} {rsid} has structural variant "
-                      f"alt={alt}, cannot interpret from DTC data",
+                      f"alt={alt}, cannot interpret from DTC data. "
+                      f"Marking {gene} as Indeterminate.",
                       file=sys.stderr)
+                sv_skipped.append({"rsid": rsid, "allele": vdef["allele"], "alt": alt})
                 continue
             alt_count = gt.count(alt)
             if alt_count > 0:
                 detected.append({"rsid": rsid, "allele": vdef["allele"],
                                  "copies": alt_count, "effect": vdef["effect"]})
+
+    # If any structural variant SNPs were skipped, the gene result is unreliable.
+    # Report as Indeterminate rather than falsely claiming Normal.
+    if sv_skipped:
+        sv_desc = ", ".join(f"{s['allele']}({s['rsid']})" for s in sv_skipped)
+        return f"Indeterminate (structural variant not assessed: {sv_desc})"
 
     if gdef.get("type") == "dpyd":
         if not detected:
@@ -1061,6 +1070,10 @@ def call_phenotype(gene, diplotype):
 
     if diplotype == "NOT_TESTED":
         return "Indeterminate (not genotyped)"
+
+    # Structural variant limitations: diplotype already flagged as indeterminate
+    if diplotype.startswith("Indeterminate"):
+        return diplotype
 
     gdef = GENE_DEFS[gene]
     norm = diplotype.upper()
@@ -1454,7 +1467,7 @@ def _evidence_cell_html(enrichment_entry, classification=""):
 # 7. Report generator
 # ---------------------------------------------------------------------------
 
-ICON = {"standard": "OK", "caution": "CAUTION", "avoid": "AVOID", "indeterminate": "INSUFFICIENT DATA"}
+ICON = {"standard": "OK", "caution": "CAUTION", "avoid": "AVOID", "indeterminate": "INDETERMINATE — INSUFFICIENT DATA"}
 
 
 def generate_report(input_path, fmt, total_snps, pgx_snps, profiles, drug_results):
@@ -1489,7 +1502,7 @@ def generate_report(input_path, fmt, total_snps, pgx_snps, profiles, drug_result
                          "relevant SNPs were not found in the input file: "
                          f"{', '.join(not_tested)}")
             lines.append("")
-            lines.append("Drugs depending on these genes are marked INSUFFICIENT DATA below. "
+            lines.append("Drugs depending on these genes are marked INDETERMINATE below. "
                          "Do not assume normal metabolism for untested genes.")
             lines.append("")
         if unknown_pheno:
@@ -1591,7 +1604,7 @@ def generate_report(input_path, fmt, total_snps, pgx_snps, profiles, drug_result
         ("MT-RNR1", "MT-RNR1 (mitochondrial)", "Not assessed", "Indeterminate (not in panel)"),
         ("G6PD", "Glucose-6-Phosphate Dehydrogenase", "Not assessed", "Indeterminate (not in panel)"),
         ("HLA-A", "HLA-A*31:01", "Not assessed", "Indeterminate (not in panel)"),
-        ("CYP2B6", "Cytochrome P450 2B6", "Not assessed", "Indeterminate (not in panel)"),
+        # CYP2B6 removed: it IS in the SNP panel (rs3745274, rs28399499)
     ]
     for gene_sym, full_name, dip, pheno in _out_of_panel:
         lines.append(f"| {gene_sym} | {full_name} | {dip} | {pheno} |")
