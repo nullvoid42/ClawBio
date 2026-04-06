@@ -33,6 +33,28 @@
 
 ---
 
+### Install in 30 seconds
+
+```bash
+git clone https://github.com/ClawBio/ClawBio.git
+cd ClawBio
+pip install -r requirements.txt    # Python 3.10+
+python clawbio.py run pharmgx --demo
+```
+
+Or use as a Python library:
+
+```python
+from clawbio import run_skill, list_skills
+result = run_skill("pharmgx", demo=True)
+```
+
+Or install as a [Claude Code](https://claude.ai/claude-code) plugin: `/plugin marketplace add ClawBio/ClawBio`
+
+> No `pip install clawbio` package yet (planned for a future release).
+
+---
+
 <p align="center">
   <img src="img/clawbio-demo.gif" alt="ClawBio GWAS Lookup demo — querying 9 genomic databases from the terminal" width="700">
 </p>
